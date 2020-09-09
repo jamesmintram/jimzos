@@ -1,12 +1,25 @@
+// const builtin = @import("builtin");
+const io = @import("io.zig");
+const vga = @import("vga.zig");
+const uart = io.uart;
+// const util = @import("util.zig");
+// const emmc = io.emmc;
+const framebuffer = vga.framebuffer;
+
+// const Version = util.Version;
 
 export fn kmain() noreturn {
+    uart.init();
+    // uart.write("trOS v{}\r", Version);
+
+    framebuffer.init().?;
+
     while (true)
     {
         
     }
-    // uart.init();
-    // uart.write("trOS v{}\r", Version);
-    // framebuffer.init().?;
+
+    
     // framebuffer.write("trOS v{}\r", Version);
     // while (true) {
     //     const x = uart.get();

@@ -44,6 +44,20 @@ SECTIONS {
   .text kernel_first_page : AT (kernel_physical_start) {
     *.text
   }
+ 
+  . = ALIGN(kernel_page_size);
+
+  __rodata_start = .;
+  .rodata : {*(.rodata .rodata*)}
+  __rodata_end = .;
+
+  . = ALIGN(kernel_page_size);
+
+  __data_start = .;
+  .data : {*(.data .data*)}
+  __data_end = .;
+
+  . = ALIGN(kernel_page_size);
 
   .bss  (NOLOAD) : {
     __bss_start = ALIGN(0x10);
