@@ -17,9 +17,7 @@ __start_ram:
 
 __start_master:
   // Use a chunk at the start of the heap for bootstrap stack
-  adrp	x2, __boot_stack  
-  add	  x2, x2, #:lo12:__boot_stack
-
+  adrp	x2, __boot_phys_stack  
   mov	  sp, x2
   
   //bl enable_jtag
@@ -122,8 +120,8 @@ entered_1:
   // Enable the MMU
 
   // Clean page tables
-  adrp x20, __page_tables_start
-  adrp x21, __page_tables_size
+  adrp x20, __page_tables_phys_start
+  ldr x21, =__page_tables_size
 
   lsr x21, x21, #4
 
@@ -141,10 +139,10 @@ entered_1:
 
   //Setup first entry of PGD
   //------------------------
-  adrp x21, __page_tables_start
+  adrp x21, __page_tables_phys_start
 
   // Address of next PT = __page_tables_start + sizeof(PGD) = 4096
-  adrp x20, __page_tables_start
+  adrp x20, __page_tables_phys_start
   add x20, x20, TABLE_SIZE
 
 	//Shift into address field - dont need this coz of 4096 page size!
@@ -159,10 +157,10 @@ entered_1:
 
   //Setup first entry of PUD
   //------------------------
-  adrp x21, __page_tables_start
+  adrp x21, __page_tables_phys_start
   add x21, x21, TABLE_SIZE
 
-  adrp x20, __page_tables_start
+  adrp x20, __page_tables_phys_start
   add x20, x20, TABLE_SIZE * 2
 
   orr x20, x20, MM_TABLE_DESCRIPTOR
@@ -173,10 +171,10 @@ entered_1:
 
   // Now we setup the L3 entries
 	//-----------------------------
-  adrp x20, __page_tables_start     // L3 Base pointer
+  adrp x20, __page_tables_phys_start     // L3 Base pointer
   add x20, x20, TABLE_SIZE * 2
  
-  adrp x21, __page_tables_start     // L4[i] Table address
+  adrp x21, __page_tables_phys_start     // L4[i] Table address
   add x21, x21, TABLE_SIZE * 3
 
 	orr x21, x21, MM_TABLE_DESCRIPTOR
@@ -197,7 +195,7 @@ entered_1:
 // Now we setup the L4 entries
 //-----------------------------
 
-  adrp x20, __page_tables_start     //L4[0] Base pointer
+  adrp x20, __page_tables_phys_start     //L4[0] Base pointer
   add x20, x20, TABLE_SIZE * 3
 
   // Current Table Entry :: Physical address + flags
@@ -255,7 +253,7 @@ entered_1:
 
 
   //Setup the page table ptr
-	adrp x20, __page_tables_start
+	adrp x20, __page_tables_phys_start
 	msr ttbr1_el1, x20
   msr ttbr0_el1, x20
 
@@ -317,3 +315,4 @@ __hang:
 
 //https://github.com/s-matyukevich/raspberry-pi-os/blob/master/docs/lesson06/rpi-os.md
 //https://github.com/s-matyukevich/raspberry-pi-os/blob/master/src/lesson06/src/boot.S#L92
+
