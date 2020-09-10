@@ -2,6 +2,8 @@ const builtin = @import("builtin");
 const std = @import("std");
 const Builder = std.build.Builder;
 
+pub const aarch64 = @import("target/aarch64.zig");
+
 pub fn build(b: *Builder) void {
     const want_gdb = b.option(bool, "gdb", "Build for QEMU gdb server") orelse false;
     const want_pty = b.option(bool, "pty", "Create a separate serial port path") orelse false;
@@ -16,10 +18,20 @@ pub fn build(b: *Builder) void {
     exe.setLinkerScriptPath("src/arch/aarch64/linker.ld");
     // Use eabihf for freestanding arm code with hardware float support
 
+
+    
+
+    var features_sub = std.Target.Cpu.Feature.Set.empty;
+    features_sub.addFeature(@enumToInt(std.Target.aarch64.Feature.neon));
+
     const target = std.zig.CrossTarget{
         .cpu_arch = .aarch64,
         .os_tag = .freestanding,
+        .cpu_features_sub = features_sub,
         .cpu_model = .{ .explicit = &std.Target.aarch64.cpu.cortex_a53 },
+        // .cpu_model = .{ 
+        //     .explicit = &std.Target.aarch64.cpu.generic
+        // }
     };
 
     exe.setTarget(target);
