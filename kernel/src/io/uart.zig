@@ -94,14 +94,14 @@ pub fn writeBytes(data: []const u8) void {
     }
 }
 
-/// `writeHandler` handles write requests for UART0 from `write`.
-fn writeHandler(context: void, data: []const u8) NoError!void {
+fn uartWrite(context: void, data: []const u8) error{}!usize {
     writeBytes(data);
+    return data.len;
 }
 
-/// `write` manages all writes for UART0. It takes formatted arguments, in the
-/// same manner that `std.debug.warn()` does. It then passes them to `writeHandler`
-/// for writing out.
-// pub fn write(comptime data: []const u8, args: ...) void {
-//     std.fmt.format({}, NoError, writeHandler, data, args) catch |e| switch (e) {};
-// }
+const UartWriter = std.io.Writer(void, error{}, uartWrite);
+pub const uart_writer = @as(UartWriter, .{ .context = {} });
+
+pub fn write(comptime data: []const u8, args: anytype,) void {
+    std.fmt.format(uart_writer, data, args) catch |e| switch (e) {};
+}
