@@ -9,21 +9,16 @@ const framebuffer = vga.framebuffer;
 
 export fn kmain() noreturn {
     uart.init();
-    uart.write("trOS v{}\r", .{util.Version});
+    uart.write("JimZOS v{}\r", .{util.Version});
 
-    // framebuffer.init().?;  
-
-    while (true)
-    {
-        
-    }
+    framebuffer.init().?;  
+    framebuffer.write("JimZOS v{}\r", .{util.Version});
     
-    // framebuffer.write("trOS v{}\r", Version);
-    // while (true) {
-    //     const x = uart.get();
-    //     uart.put(x);
-    //     framebuffer.put(x);
-    // }
+    while (true) {
+        const x = uart.get();
+        uart.put(x);
+        framebuffer.put(x);
+    }
     // // enter low power state and hang if we get somehow get out of the while loop.
     // util.powerOff();
     // util.hang();

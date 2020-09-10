@@ -171,10 +171,22 @@ pub fn writeBytes(data: []const u8) void {
     }
 }
 
-/// `writeHandler` handles write requests for the framebuffer from `write`.
-fn writeHandler(context: void, data: []const u8) NoError!void {
+fn fbWrite(context: void, data: []const u8) error{}!usize {
     writeBytes(data);
+    return data.len;
 }
+
+const FBWriter = std.io.Writer(void, error{}, fbWrite);
+pub const uart_writer = @as(FBWriter, .{ .context = {} });
+
+pub fn write(comptime data: []const u8, args: anytype,) void {
+    std.fmt.format(uart_writer, data, args) catch |e| switch (e) {};
+}
+
+// /// `writeHandler` handles write requests for the framebuffer from `write`.
+// fn writeHandler(context: void, data: []const u8) NoError!void {
+//     writeBytes(data);
+// }
 
 /// `write` manages all writes for the framebuffer. It takes formatted arguments, in the
 /// same manner that `std.debug.warn()` does. It then passes them to `writeHandler`
