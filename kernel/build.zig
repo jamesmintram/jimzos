@@ -11,6 +11,8 @@ pub fn build(b: *Builder) void {
     const exe = b.addExecutable("kernel8.elf", "src/kernel.zig");
     exe.addAssemblyFile("src/arch/aarch64/head.S");
     exe.addAssemblyFile("src/arch/aarch64/crt0.S");
+    exe.addAssemblyFile("src/arch/aarch64/exception.S");
+    exe.addAssemblyFile("src/arch/aarch64/context.S");
     exe.setBuildMode(mode);
 
     exe.setLinkerScriptPath("src/arch/aarch64/linker.ld");

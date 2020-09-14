@@ -282,7 +282,7 @@ entered_1:
 	msr tcr_el1, x20
 
   // set up exception handlers in VA space
-	// ldr     x0, =_vectors FIXME(James) Reinstate
+	ldr     x0, =_vectors // FIXME(James) Reinstate
 	msr     vbar_el1, x0
 
 jump_prep:

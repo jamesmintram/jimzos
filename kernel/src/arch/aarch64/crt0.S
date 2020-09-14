@@ -73,9 +73,6 @@ call:
   ret
 
 
-
-
-
 # add section debug inf
 // .size	__start_ram, . - __start_ram
 
