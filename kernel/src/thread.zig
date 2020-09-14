@@ -40,6 +40,15 @@ pub fn create_default_thread(allocator : *Allocator, parent : *process.Process) 
     return newThread;
 }
 
+var thread_list : *Thread = undefined;
+
+fn add_to_thread_list(new_thread : *Thread) void {
+    new_thread.next = thread_list;
+    new_thread.prev = undefined;
+
+    thread_list = new_thread;
+}
+
 pub fn create_initial_thread(allocator : *Allocator, thread_fn : fn () void) !*Thread {
     var kernel_proc = process.create_process(allocator) catch unreachable;
 
@@ -69,22 +78,48 @@ pub fn create_initial_thread(allocator : *Allocator, thread_fn : fn () void) !*T
 
     frame.tf_spsr = spsr;
 
+    add_to_thread_list(newThread);
+
     return newThread;
 }
 
 pub fn current_thread() *Thread {
-    //Read this from the CPU register
+    var thread_id :usize = 0;
+
+    //FIXME - I think this works only by accident
+    thread_id = asm volatile ("mrs %[thread_id], tpidr_el1": [thread_id] "=&r" (-> usize):);
+    return @intToPtr(*Thread, thread_id);
 }
 
-//TODO: _ctx_switch_to_initial
-extern fn _ctx_switch_to_initial(sp : usize) void;
+pub fn yield() void {
+    //NAIVE ROUND ROBIN
+    var current = current_thread();
+    var next = current.next orelse thread_list;
 
-pub fn thread_switch(thread : *Thread) void {
+    switch_to(next);
+}
+
+extern fn _ctx_switch_to_initial(sp : usize) void;
+pub fn switch_to_initial(thread : *Thread) void {
+    _ctx_switch_to_initial(@ptrToInt(thread));
+}
+
+extern fn _ctx_switch_to(old_thread : usize, new_thread : usize) void;
+pub fn switch_to(thread : *Thread) void {
     // Switch to new user space proc address space
     // Call the platform code for switch_to_thread
     // - Update the current ThreadID register value
     // - Restore registers + ERET to same level
 
+    var current = current_thread();
+
+    //TODO: Check they are not the same, otherwise we just instant return
+
+    if (current != thread)
+    {
+        _ctx_switch_to(@ptrToInt(current), @ptrToInt(thread));
+    }
+    
     // uart.write("Switching to process {} thread {}\n", .{thread.proc.pid, thread.tid});
-    _ctx_switch_to_initial(@ptrToInt(thread));
+    
 }

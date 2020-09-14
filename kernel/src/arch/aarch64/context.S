@@ -79,3 +79,34 @@ _ctx_switch_to_initial:
   ctx_switch_restore_registers
 
   ret
+
+
+.global _ctx_switch_to
+_ctx_switch_to:
+  // X0 = pointer to the current thread
+  // X1 = pointer to the next thread
+  //NOTE: X0 and X1 must not be modified by save_registers
+
+  clrex
+
+  ctx_switch_save_registers
+  // X0 contains the new SP for the thread we just switched away from
+  
+  // Store the thread's SP value in it's thread block  
+  mov x18, sp
+  str x18, [x0, Thread_stack_pointer]
+
+  // Switch the thread pointer to the next thread block
+  msr tpidr_el1, x1
+  
+  // Switch page tables
+
+  // Load the next thread's SP
+  ldr x18, [x1, Thread_stack_pointer]
+  mov sp, x18
+
+  //Finally restore the registers
+  ctx_switch_restore_registers
+
+  ret
+  

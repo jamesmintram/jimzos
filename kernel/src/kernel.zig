@@ -70,19 +70,13 @@ var page_allocator = BumpAllocator{
     }
 };
 
-
-//TODO: Possible to set some consts that are = to the OffsetOf(...)
-// export const TF_SP : usize = @OffsetOf(Thread, "stack_pointer");
-
-
-
 export fn kmain() noreturn {
     uart.init();
     uart.write("JimZOS v{}\r", .{util.Version});
 
     // Get inside a thread context ASAP
     var init_thread = thread.create_initial_thread(&page_allocator.allocator, kmain_init) catch unreachable;
-    thread.thread_switch(init_thread);
+    thread.switch_to_initial(init_thread);
 
     uart.write("End of kmain\r", .{});
     unreachable;
@@ -94,11 +88,29 @@ fn kmain_init() noreturn {
 
     uart.write("Entered init thread\r", .{});
 
-    // 
+    //TODO: Yield ping pong between EL1 and EL0
+    //          - Switching address space
+    //          - Pre-allocate some heap + stack space (Later we can on demand)
+    //          - Copy a flat binary into the "Text" space
+
+    var alt_thread = thread.create_initial_thread(&page_allocator.allocator, kmain_alt) catch unreachable;
+
+    thread.switch_to(alt_thread);
 
     while (true) {
-        const x = uart.get();
-        uart.put(x);
-        framebuffer.put(x);
+        uart.write("INIT\r", .{});
+        thread.yield();
+        // const x = uart.get();
+        // uart.put(x);
+        // framebuffer.put(x);
+    }
+}
+
+fn kmain_alt() noreturn {
+    uart.write("Entered alt thread\r", .{});
+
+    while (true) {
+        uart.write("ALT\r", .{});
+        thread.yield();
     }
 }
