@@ -15,6 +15,8 @@ const thread = @import("thread.zig");
 const mem = std.mem;
 const Allocator = mem.Allocator;
 
+const page = @import("vm/page.zig");
+
 // const emmc = io.emmc;
 
 // Alloc/Free to work?
@@ -27,6 +29,7 @@ pub fn alignPageAllocLen(full_len: usize, len: usize, len_align: u29) usize {
 }
 
 extern const __heap_start : usize;
+extern const __heap_phys_start : *usize;
 
 const BumpAllocator = struct {
     const Self = @This();
@@ -89,16 +92,27 @@ fn kmain_init() noreturn {
     uart.write("Entered init thread\r", .{});
 
     //TODO: Yield ping pong between EL1 and EL0
+    //          - Copy a flat binary into the "Text" space
+    //          - Handle EL0 sync exceptions
     //          - Switching address space
     //          - Pre-allocate some heap + stack space (Later we can on demand)
-    //          - Copy a flat binary into the "Text" space
+    
 
+    const total_memory = 1024 * 1024 * 1024; //1GB
+    const memory_start = 0x000000000038e000 + 0x1000000;//__heap_phys_start; FIXME - relocation error when using symbol
+    const available_memory = total_memory - memory_start;
+    const page_count = available_memory / 4096;  // page_size = 4096
+
+    page.add_phys_pages(@intToPtr(*page.Page, memory_start), memory_start, page_count);
+    // page.dump(uart);
+
+    //TODO: Initialize the kernel bump allocator (which will just use the vm/page module)
     var alt_thread = thread.create_initial_thread(&page_allocator.allocator, kmain_alt) catch unreachable;
 
     thread.switch_to(alt_thread);
 
     while (true) {
-        uart.write("INIT\r", .{});
+        // uart.write("INIT\r", .{});
         thread.yield();
         // const x = uart.get();
         // uart.put(x);
@@ -110,7 +124,7 @@ fn kmain_alt() noreturn {
     uart.write("Entered alt thread\r", .{});
 
     while (true) {
-        uart.write("ALT\r", .{});
+        // uart.write("ALT\r", .{});
         thread.yield();
     }
 }
