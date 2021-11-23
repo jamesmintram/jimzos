@@ -1,9 +1,10 @@
-const types = @import("../types.zig");
+const regs = @import("../types/regs.zig");
+
 const mmio = @import("mmio.zig");
 const uart = @import("uart.zig");
 
 
-const Register = types.regs.Register;
+const Register = regs.Register;
 
 pub const VCORE_MBOX : u32 = mmio.MMIO_BASE + 0x0000B880;
 pub const MBOX_READ = Register { .ReadOnly = VCORE_MBOX + 0x0 };

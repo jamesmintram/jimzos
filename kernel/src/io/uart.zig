@@ -1,13 +1,13 @@
 const std = @import("std");
 const io = @import("../io.zig");
-const types = @import("../types.zig");
+const regs = @import("../types/regs.zig");
 
 const mmio = io.mmio;
 const gpio = io.gpio;
 const mbox = io.mbox;
 
-const Register = types.regs.Register;
-const NoError = types.errorTypes.NoError;
+const Register = regs.Register;
+//const NoError = types.errorTypes.NoError;
 
 // See page 90 of the BCM2835 manual for information about most of these.
 

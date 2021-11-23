@@ -1,11 +1,11 @@
 const io = @import("io.zig");
-const types = @import("types.zig");
+
 const mmio = io.mmio;
 const mbox = io.mbox;
 const gpio = io.gpio;
 const uart = io.uart;
-const regs = types.regs;
 
+const regs = @import("types/regs.zig");
 const Register = regs.Register;
 
 // Embedded version number

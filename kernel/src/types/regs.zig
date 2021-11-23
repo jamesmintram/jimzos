@@ -1,7 +1,3 @@
-const errors = @import("errors.zig");
-const io = @import("../io.zig");
-const errorTypes = errors.errorTypes;
-
 pub const Register = union(enum) {
     ReadOnly: u32,
     WriteOnly: u32,

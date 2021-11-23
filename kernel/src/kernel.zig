@@ -1,9 +1,7 @@
 // const builtin = @import("builtin");
 const io = @import("io.zig");
-const vga = @import("vga.zig");
 const uart = io.uart;
 const util = @import("util.zig");
-const framebuffer = vga.framebuffer;
 const std = @import("std");
 
 const debug = std.debug;
