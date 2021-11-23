@@ -172,6 +172,7 @@ pub fn writeBytes(data: []const u8) void {
 }
 
 fn fbWrite(context: void, data: []const u8) error{}!usize {
+    _ = context;
     writeBytes(data);
     return data.len;
 }
@@ -188,9 +189,9 @@ pub fn write(comptime data: []const u8, args: anytype,) void {
 //     writeBytes(data);
 // }
 
-/// `write` manages all writes for the framebuffer. It takes formatted arguments, in the
-/// same manner that `std.debug.warn()` does. It then passes them to `writeHandler`
-/// for writing out.
+// `write` manages all writes for the framebuffer. It takes formatted arguments, in the
+// same manner that `std.debug.warn()` does. It then passes them to `writeHandler`
+// for writing out.
 // pub fn write(comptime data: []const u8, args: ...) void {
 //     std.fmt.format({}, NoError, writeHandler, data, args) catch |e| switch (e) {};
 // }

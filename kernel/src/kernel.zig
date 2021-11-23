@@ -9,15 +9,13 @@ const std = @import("std");
 const debug = std.debug;
 const assert = debug.assert;
 
-const process = @import("process.zig");
+const process = @import("proc.zig");
 const thread = @import("thread.zig");
 
 const mem = std.mem;
 const Allocator = mem.Allocator;
 
 const page = @import("vm/page.zig");
-
-// const emmc = io.emmc;
 
 // Alloc/Free to work?
 // Process ping pong
@@ -38,6 +36,9 @@ const BumpAllocator = struct {
     allocator: Allocator,
 
     fn alloc(allocator: *Allocator, n: usize, alignment: u29, len_align: u29, ra: usize) error{OutOfMemory}![]u8 {
+        _ = ra;
+        _ = alignment;
+
         assert(n > 0);
         const aligned_len = mem.alignForward(n, mem.page_size);
         const self = @fieldParentPtr(Self, "allocator", allocator);
@@ -56,8 +57,15 @@ const BumpAllocator = struct {
         len_align: u29,
         return_address: usize,
     ) Allocator.Error!usize {
-        const self = @fieldParentPtr(Self, "allocator", allocator);
-        const new_size_aligned = mem.alignForward(new_size, mem.page_size);
+        _ = allocator;
+        _ = buf_unaligned;
+        _ = buf_align;
+        _ = new_size;
+        _ = len_align;
+        _ = return_address;
+
+        //const self = @fieldParentPtr(Self, "allocator", allocator);
+        //const new_size_aligned = mem.alignForward(new_size, mem.page_size);
 
         //FIXME  std/heap.zig:234 (BumpAllocator)
         return error.OutOfMemory;
@@ -75,7 +83,7 @@ var page_allocator = BumpAllocator{
 
 export fn kmain() noreturn {
     uart.init();
-    uart.write("JimZOS v{}\r", .{util.Version});
+    uart.write("JimZOS v{s}\r", .{util.Version});
 
     // Get inside a thread context ASAP
     var init_thread = thread.create_initial_thread(&page_allocator.allocator, kmain_init) catch unreachable;
@@ -112,7 +120,7 @@ fn kmain_init() noreturn {
     thread.switch_to(alt_thread);
 
     while (true) {
-        // uart.write("INIT\r", .{});
+        uart.write("INIT\r", .{});
         thread.yield();
         // const x = uart.get();
         // uart.put(x);
@@ -124,7 +132,7 @@ fn kmain_alt() noreturn {
     uart.write("Entered alt thread\r", .{});
 
     while (true) {
-        // uart.write("ALT\r", .{});
+        uart.write("ALT\r", .{});
         thread.yield();
     }
 }

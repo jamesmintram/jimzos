@@ -95,6 +95,7 @@ pub fn writeBytes(data: []const u8) void {
 }
 
 fn uartWrite(context: void, data: []const u8) error{}!usize {
+    _ = context;
     writeBytes(data);
     return data.len;
 }

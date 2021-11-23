@@ -1,4 +1,4 @@
-const AtomicOrder = @import("builtin").AtomicOrder;
+const AtomicOrder = @import("std").builtin.AtomicOrder;
 const types = @import("../types.zig");
 const regs = types.regs;
 
