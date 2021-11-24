@@ -13,79 +13,22 @@ const thread = @import("thread.zig");
 const mem = std.mem;
 const Allocator = mem.Allocator;
 
+// const BumpAllocator = @import("vm/page_frame_manager.zig").BumpAllocator;
 const page = @import("vm/page.zig");
 
 // Alloc/Free to work?
 // Process ping pong
-/// Verifies that the adjusted length will still map to the full length
-pub fn alignPageAllocLen(full_len: usize, len: usize, len_align: u29) usize {
-    const aligned_len = mem.alignAllocLen(full_len, len, len_align);
-    assert(mem.alignForward(aligned_len, mem.page_size) == full_len);
-    return aligned_len;
-}
-
-extern const __heap_start : usize;
-extern const __heap_phys_start : *usize;
-
-const BumpAllocator = struct {
-    const Self = @This();
-    
-    addr : usize,
-    allocator: Allocator,
-
-    fn alloc(allocator: *Allocator, n: usize, alignment: u29, len_align: u29, ra: usize) error{OutOfMemory}![]u8 {
-        _ = ra;
-        _ = alignment;
-
-        assert(n > 0);
-        const aligned_len = mem.alignForward(n, mem.page_size);
-        const self = @fieldParentPtr(Self, "allocator", allocator);
-        
-        var return_address = self.addr;
-        self.addr += aligned_len;
-
-        return @ptrCast([*]u8, @intToPtr(*u8, return_address))[0..alignPageAllocLen(aligned_len, n, len_align)];
-    }
-
-    fn resize(
-        allocator: *Allocator,
-        buf_unaligned: []u8,
-        buf_align: u29,
-        new_size: usize,
-        len_align: u29,
-        return_address: usize,
-    ) Allocator.Error!usize {
-        _ = allocator;
-        _ = buf_unaligned;
-        _ = buf_align;
-        _ = new_size;
-        _ = len_align;
-        _ = return_address;
-
-        //const self = @fieldParentPtr(Self, "allocator", allocator);
-        //const new_size_aligned = mem.alignForward(new_size, mem.page_size);
-
-        //FIXME  std/heap.zig:234 (BumpAllocator)
-        return error.OutOfMemory;
-    }
-};
-
-var page_allocator = BumpAllocator{
-    // .addr = 0xffff00000038d000, //__heap_start,
-    .addr = 0xffff00000F38d000, //__heap_start + LOADS,
-    .allocator = Allocator {
-        .allocFn = BumpAllocator.alloc,
-        .resizeFn = BumpAllocator.resize,
-    }
-};
+// Verifies that the adjusted length will still map to the full length
+const vm = @import("vm.zig");
 
 export fn kmain() noreturn {
     arch_init.init();
-    
+    vm.init();
+
     kprint.write("JimZOS v{s}\r", .{util.Version});
 
     // Get inside a thread context ASAP
-    var init_thread = thread.create_initial_thread(&page_allocator.allocator, kmain_init) catch unreachable;
+    var init_thread = thread.create_initial_thread(&vm.get_page_frame_manager().allocator, kmain_init) catch unreachable;
     thread.switch_to_initial(init_thread);
 
     kprint.write("End of kmain\r", .{});
@@ -93,7 +36,7 @@ export fn kmain() noreturn {
 }
 
 fn kmain_init() noreturn {
-    // framebuffer.init().?;  
+    // framebuffer.init().?;
     // framebuffer.write("JimZOS v{}\r", .{util.Version});
 
     kprint.write("Entered init thread\r", .{});
@@ -103,19 +46,21 @@ fn kmain_init() noreturn {
     //          - Handle EL0 sync exceptions
     //          - Switching address space
     //          - Pre-allocate some heap + stack space (Later we can on demand)
-    
 
     const total_memory = 1024 * 1024 * 1024; //1GB
-    const memory_start = 0x000000000038e000 + 0x1000000;//__heap_phys_start; FIXME - relocation error when using symbol
+    const memory_start = 0x000000000038e000 + 0x1000000; //__heap_phys_start; FIXME - relocation error when using symbol
     const available_memory = total_memory - memory_start;
-    const page_count = available_memory / 4096;  // page_size = 4096
+    const page_count = available_memory / 4096; // page_size = 4096
 
+    kprint.write("Pages\r", .{});
     page.add_phys_pages(@intToPtr(*page.Page, memory_start), memory_start, page_count);
     // page.dump(uart);
 
+    kprint.write("Create init thread\r", .{});
     //TODO: Initialize the kernel bump allocator (which will just use the vm/page module)
-    var alt_thread = thread.create_initial_thread(&page_allocator.allocator, kmain_alt) catch unreachable;
+    var alt_thread = thread.create_initial_thread(&vm.get_page_frame_manager().allocator, kmain_alt) catch unreachable;
 
+    kprint.write("Swotcj\r", .{});
     thread.switch_to(alt_thread);
 
     while (true) {

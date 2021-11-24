@@ -100,6 +100,9 @@ pub fn build(b: *Builder) void {
             "-s",
         });
     }
+
+    // Can we configure a gdb option? Which would launch gdb, connect it to qemu and have it ready to go
+
     qemu.dependOn(&run_objdump.step);
     qemu.dependOn(&run_create_syms.step);
     qemu.dependOn(&run_qemu.step);
