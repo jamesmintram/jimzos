@@ -1,7 +1,7 @@
 // const builtin = @import("builtin");
-const io = @import("io.zig");
-const uart = io.uart;
+const kprint = @import("kprint.zig");
 const util = @import("arch/aarch64/util.zig");
+const arch_init = @import("arch/aarch64/arch_init.zig");
 const std = @import("std");
 
 const debug = std.debug;
@@ -80,14 +80,15 @@ var page_allocator = BumpAllocator{
 };
 
 export fn kmain() noreturn {
-    uart.init();
-    uart.write("JimZOS v{s}\r", .{util.Version});
+    arch_init.init();
+    
+    kprint.write("JimZOS v{s}\r", .{util.Version});
 
     // Get inside a thread context ASAP
     var init_thread = thread.create_initial_thread(&page_allocator.allocator, kmain_init) catch unreachable;
     thread.switch_to_initial(init_thread);
 
-    uart.write("End of kmain\r", .{});
+    kprint.write("End of kmain\r", .{});
     unreachable;
 }
 
@@ -95,7 +96,7 @@ fn kmain_init() noreturn {
     // framebuffer.init().?;  
     // framebuffer.write("JimZOS v{}\r", .{util.Version});
 
-    uart.write("Entered init thread\r", .{});
+    kprint.write("Entered init thread\r", .{});
 
     //TODO: Yield ping pong between EL1 and EL0
     //          - Copy a flat binary into the "Text" space
@@ -118,19 +119,19 @@ fn kmain_init() noreturn {
     thread.switch_to(alt_thread);
 
     while (true) {
-        uart.write("INIT\r", .{});
+        kprint.write("INIT\r", .{});
         thread.yield();
-        // const x = uart.get();
-        // uart.put(x);
+        // const x = kprint.get();
+        // kprint.put(x);
         // framebuffer.put(x);
     }
 }
 
 fn kmain_alt() noreturn {
-    uart.write("Entered alt thread\r", .{});
+    kprint.write("Entered alt thread\r", .{});
 
     while (true) {
-        uart.write("ALT\r", .{});
+        kprint.write("ALT\r", .{});
         thread.yield();
     }
 }
