@@ -10,8 +10,7 @@ const FileSource = std.build.FileSource;
 
 const thread = @import("src/thread.zig");
 
-pub fn write_struct_def(comptime T : type) void {
-    
+pub fn write_struct_def(comptime T: type) void {
     const file = fs.cwd().createFile("src/arch/aarch64/struct_defs_" ++ @typeName(T) ++ ".h", .{}) catch unreachable;
     defer file.close();
 
@@ -21,30 +20,28 @@ pub fn write_struct_def(comptime T : type) void {
 
     switch (@typeInfo(T)) {
         .Struct => |StructT| {
-            inline for (StructT.fields) |f| 
-            {
+            inline for (StructT.fields) |f| {
                 //const stdout = std.io.getStdOut().writer();
-                writer.print("#define {s}_{s} {}\n", .{@typeName(T), f.name, @offsetOf(T, f.name)}) catch {};
+                writer.print("#define {s}_{s} {}\n", .{ @typeName(T), f.name, @offsetOf(T, f.name) }) catch {};
             }
 
-            writer.print("#define {s}__size {}\n", .{@typeName(T), @sizeOf(T)}) catch {};
+            writer.print("#define {s}__size {}\n", .{ @typeName(T), @sizeOf(T) }) catch {};
         },
         else => @compileError("Thread type not a struct"),
     }
 }
 
 pub fn build(b: *Builder) void {
-
     write_struct_def(thread.Thread);
     write_struct_def(thread.CPUFrame);
 
-    //const want_gdb = b.option(bool, "gdb", "Build for QEMU gdb server") orelse false;
-    //const want_pty = b.option(bool, "pty", "Create a separate serial port path") orelse false;
+    const want_gdb = b.option(bool, "gdb", "Build for QEMU gdb server") orelse false;
+    const want_pty = b.option(bool, "pty", "Create a separate serial port path") orelse false;
 
     const mode = b.standardReleaseOptions();
-    
+
     const exe = b.addExecutable("kernel8.elf", "src/kernel.zig");
-    
+
     exe.addAssemblyFile("src/arch/aarch64/kernel_entry.S");
     exe.addAssemblyFile("src/arch/aarch64/kernel_pre.S");
 
@@ -72,42 +69,40 @@ pub fn build(b: *Builder) void {
     const dump_step = b.step("dump", "Dump symbols");
     dump_step.dependOn(&exe.step);
 
-    // const qemu_path = if (builtin.os == builtin.Os.windows) "C:/Program Files/qemu/qemu-system-aarch64.exe" else "qemu-system-aarch64";
-    const run_objdump = b.addSystemCommand(&[_][]const u8 { "llvm-objcopy-13" });
+    const run_objdump = b.addSystemCommand(&[_][]const u8{"llvm-objcopy-13"});
     run_objdump.addArtifactArg(exe);
-    run_objdump.addArgs(&[_][]const u8{
-        "-O",
-        "binary",
-        "zig-out/bin/kernel8"
-    });   
+    run_objdump.addArgs(&[_][]const u8{ "-O", "binary", "zig-out/bin/kernel8" });
 
-    const run_create_syms = b.addSystemCommand(&[_][]const u8 { "./post.sh" });
+    const run_create_syms = b.addSystemCommand(&[_][]const u8{"./post.sh"});
     run_create_syms.addArtifactArg(exe);
 
     dump_step.dependOn(&run_objdump.step);
     dump_step.dependOn(&run_create_syms.step);
 
-    // const qemu = b.step("qemu", "run kernel in qemu");
+    const qemu = b.step("qemu", "run kernel in qemu");
 
-    // const qemu_path = if (builtin.os == builtin.Os.windows) "C:/Program Files/qemu/qemu-system-aarch64.exe" else "qemu-system-aarch64";
-    // const run_qemu = b.addSystemCommand([][]const u8 { qemu_path });
-    // run_qemu.addArg("-kernel");
-    // run_qemu.addArtifactArg(exe);
-    // run_qemu.addArgs([][]const u8{
-    //     "-m",
-    //     "256",
-    //     "-M",
-    //     "raspi3",
-    //     "-serial",
-    //     if (want_pty) "pty" else "stdio",
-    // });
-    // if (want_gdb) {
-    //     run_qemu.addArgs([][]const u8{
-    //         "-S",
-    //         "-s",
-    //     });
-    // }
-    // qemu.dependOn(&run_qemu.step);
+    //const qemu_path = if (builtin.os == builtin.os.windows) "C:/Program Files/qemu/qemu-system-aarch64.exe" else "qemu-system-aarch64";
+    const qemu_path = "qemu-system-aarch64";
+    const run_qemu = b.addSystemCommand(&[_][]const u8{qemu_path});
+    run_qemu.addArg("-kernel");
+    run_qemu.addArtifactArg(exe);
+    run_qemu.addArgs(&[_][]const u8{
+        "-m",
+        "256",
+        "-M",
+        "raspi3",
+        "-serial",
+        if (want_pty) "pty" else "stdio",
+    });
+    if (want_gdb) {
+        run_qemu.addArgs(&[_][]const u8{
+            "-S",
+            "-s",
+        });
+    }
+    qemu.dependOn(&run_objdump.step);
+    qemu.dependOn(&run_create_syms.step);
+    qemu.dependOn(&run_qemu.step);
 
     b.default_step.dependOn(&exe.step);
     b.installArtifact(exe);
