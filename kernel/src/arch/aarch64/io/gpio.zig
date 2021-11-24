@@ -1,7 +1,6 @@
-const io = @import("../io.zig");
 const regs = @import("../types/regs.zig");
 
-const mmio = io.mmio;
+const mmio = @import("mmio.zig");
 
 const Register = regs.Register;
 

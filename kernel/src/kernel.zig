@@ -1,7 +1,7 @@
 // const builtin = @import("builtin");
 const io = @import("io.zig");
 const uart = io.uart;
-const util = @import("util.zig");
+const util = @import("arch/aarch64/util.zig");
 const std = @import("std");
 
 const debug = std.debug;

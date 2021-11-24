@@ -1,9 +1,7 @@
-const io = @import("io.zig");
-
-const mmio = io.mmio;
-const mbox = io.mbox;
-const gpio = io.gpio;
-const uart = io.uart;
+const mmio = @import("io/mmio.zig");
+const mbox = @import("io/mbox.zig");
+const gpio = @import("io/gpio.zig");
+const uart = @import("io/uart.zig");
 
 const regs = @import("types/regs.zig");
 const Register = regs.Register;

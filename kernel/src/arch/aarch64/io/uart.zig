@@ -1,10 +1,9 @@
 const std = @import("std");
-const io = @import("../io.zig");
 const regs = @import("../types/regs.zig");
 
-const mmio = io.mmio;
-const gpio = io.gpio;
-const mbox = io.mbox;
+const mmio = @import("mmio.zig");
+const gpio = @import("gpio.zig");
+const mbox = @import("mbox.zig");
 
 const Register = regs.Register;
 //const NoError = types.errorTypes.NoError;

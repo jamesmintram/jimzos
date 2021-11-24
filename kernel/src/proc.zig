@@ -2,7 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const thread = @import("thread.zig");
-const address_space = @import("address_space.zig");
+const address_space = @import("vm/address_space.zig");
 
 pub const Process = struct {
     next : ?*Process,
