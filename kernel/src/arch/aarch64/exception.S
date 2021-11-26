@@ -1,11 +1,11 @@
 .macro vempty
   .align 7
-  mov     x0, #3
-  mrs     x1, esr_el1
-  mrs     x2, elr_el1
-  mrs     x3, spsr_el1
-  mrs     x4, far_el1
-  b       exit
+  //mov     x0, #3
+  mrs     x0, esr_el1
+  mrs     x1, elr_el1
+  mrs     x2, spsr_el1
+  mrs     x3, far_el1
+  b       exception_panic
 .endm
 
 .macro vector name

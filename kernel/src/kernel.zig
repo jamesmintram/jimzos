@@ -38,7 +38,10 @@ export fn kmain() noreturn {
 
     kprint.write("JimZOS v{s}\r", .{util.Version});
 
-    some_crash() catch @panic("Oh bum");
+    //some_crash() catch @panic("Oh bum");
+
+    var ptr : *u8 = @intToPtr(*u8, 0xFFFFFFFFFFFFFFFF);
+    ptr.* = 2;
 
     // Get inside a thread context ASAP
     var init_thread = thread.create_initial_thread(&vm.get_page_frame_manager().allocator, kmain_init) catch unreachable;
@@ -98,4 +101,20 @@ fn kmain_alt() noreturn {
 
 pub fn panic(msg: []const u8, error_return_trace: ?*builtin.StackTrace) noreturn {
     @import("panic.zig").handle_panic(msg, error_return_trace);
+}
+
+export fn exception_panic(esr_el1: u64, elr_el1: u64, spsr_el1: u64, far_el1: u64) noreturn {
+    
+    @import("panic.zig").print_guru("Unhandled synchronous exception triggered");
+    
+    kprint.write("esr_el1:  0x{x:0>16}\r", .{esr_el1});
+    kprint.write("spsr_el1: 0x{x:0>16}\r", .{spsr_el1});
+    kprint.write("far_el1:  0x{x:0>16}\r", .{far_el1});
+
+    // elr_el1 should contain an address to a source code location, lets
+    // try to print it.
+    kprint.write("elr_el1:  ", .{});
+    @import("panic.zig").print_address(elr_el1) catch unreachable;
+
+    while(true) {}
 }

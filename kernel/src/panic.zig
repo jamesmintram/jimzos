@@ -108,12 +108,7 @@ pub fn handle_panic(msg: []const u8, error_return_trace: ?*builtin.StackTrace) n
     }
     already_panicking = true;
 
-    kprint.write("+=================+\r", .{});
-    kprint.write("| GURU MEDITATION |\r", .{});
-    kprint.write("+=================+\r", .{});
-    kprint.write("\r", .{});
-    kprint.write("Message: {s}\r", .{msg});
-    kprint.write("\r", .{});
+    print_guru(msg);
 
     var debug_info = extract_dwarf_info(kernel_elf.get()) catch unreachable;
 
@@ -125,4 +120,34 @@ pub fn handle_panic(msg: []const u8, error_return_trace: ?*builtin.StackTrace) n
     }
 
     while (true) {}
+}
+
+pub fn print_guru(msg: []const u8) void {
+    kprint.write("+=================+\r", .{});
+    kprint.write("| GURU MEDITATION |\r", .{});
+    kprint.write("+=================+\r", .{});
+    kprint.write("\r", .{});
+    kprint.write("Message: {s}\r", .{msg});
+    kprint.write("\r", .{});
+}
+
+pub fn print_address(address:u64) !void {
+    var debug_info = try extract_dwarf_info(kernel_elf.get());
+    try std.dwarf.openDwarfDebugInfo(&debug_info, kernel_panic_allocator);
+
+    var compile_unit = debug_info.findCompileUnit(address) catch {
+        kprint.write("0x{x:0>16} ??? ?:?  Line info not available ???\r", .{ address });
+        return;
+    };
+
+    if (debug_info.getLineNumberInfo(compile_unit.*, address)) |line_info| {
+        kprint.write("0x{x:0>16} {s}:{}:{}\r", .{
+            address,
+            line_info.file_name,
+            line_info.line,
+            line_info.column,
+        });
+    } else |_| {
+        kprint.write("0x{x:0>16} ?:? ??? Line info not available ???\r", .{ address });
+    }
 }
