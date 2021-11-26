@@ -23,12 +23,22 @@ const page = @import("vm/page.zig");
 const vm = @import("vm.zig");
 const kernel_elf = @import("kernel_elf.zig");
 
+fn some_crash2() !void {
+    return error.Err;
+}
+
+fn some_crash() !void {
+    try some_crash2();
+}
+
 export fn kmain() noreturn {
     arch_init.init();
     kernel_elf.init() catch unreachable;
     vm.init();
 
     kprint.write("JimZOS v{s}\r", .{util.Version});
+
+    some_crash() catch @panic("Oh bum");
 
     // Get inside a thread context ASAP
     var init_thread = thread.create_initial_thread(&vm.get_page_frame_manager().allocator, kmain_init) catch unreachable;
@@ -51,8 +61,6 @@ fn kmain_init() noreturn {
     //          - Pre-allocate some heap + stack space (Later we can on demand)
 
     // Test our crash out here
-    var t : u8 = 10;
-    while(true) { t+=1;}
 
     // const total_memory = 1024 * 1024 * 1024; //1GB
     // const memory_start = 0x000000000038e000 + 0x1000000; //__heap_phys_start; FIXME - relocation error when using symbol

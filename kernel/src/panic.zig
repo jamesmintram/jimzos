@@ -21,19 +21,20 @@ fn dump_stack_trace(dwarf_info: *std.dwarf.DwarfInfo, stack_trace: *builtin.Stac
         const return_address = stack_trace.instruction_addresses[frame_index];
 
         var compile_unit = dwarf_info.findCompileUnit(return_address) catch {
-            kprint.write("{:0>3} ?:? ??? Line info not available ???\r", .{frames_left});
+            kprint.write("{: >3} ? ?:? ??? Line info not available ???\r", .{frames_left});
             continue;
         };
 
         if (dwarf_info.getLineNumberInfo(compile_unit.*, return_address)) |line_info| {
-            kprint.write("{:0>3} {}:{} {s}\r", .{
+            kprint.write("{: >3} {x:0>16} {s}:{}:{}\r", .{
                 frames_left,
+                return_address,
+                line_info.file_name,
                 line_info.line,
                 line_info.column,
-                line_info.file_name,
             });
         } else |_| {
-            kprint.write("{:0>3} ?:? ??? Line info not available ???\r", .{frames_left});
+            kprint.write("{: >3} {x:0>16} ?:? ??? Line info not available ???\r", .{ frames_left, return_address });
         }
     }
 }
@@ -111,11 +112,13 @@ pub fn handle_panic(msg: []const u8, error_return_trace: ?*builtin.StackTrace) n
     kprint.write("| GURU MEDITATION |\r", .{});
     kprint.write("+=================+\r", .{});
     kprint.write("\r", .{});
-    kprint.write("{s}\r", .{msg});
+    kprint.write("Message: {s}\r", .{msg});
+    kprint.write("\r", .{});
 
     var debug_info = extract_dwarf_info(kernel_elf.get()) catch unreachable;
 
     if (error_return_trace) |stack_trace| {
+        kprint.write("Dumping stack trace\r", .{});
         dump_stack_trace(&debug_info, stack_trace) catch unreachable;
     } else {
         kprint.write("No stack trace available\r", .{});

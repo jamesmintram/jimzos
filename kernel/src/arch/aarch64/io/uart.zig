@@ -73,12 +73,10 @@ pub fn put(c: u8) void {
         '\r' => {
             mmio.write(UART_DR, '\n').?;
             mmio.write(UART_DR, '\r').?;
-            for ("READY:> ") |d|
-                put(d);
         },
         else => {
             mmio.write(UART_DR, c).?;
-        }
+        },
     }
 }
 
