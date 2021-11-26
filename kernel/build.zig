@@ -1,5 +1,5 @@
 const builtin = @import("builtin");
-const std = @import("std");
+const std = @import("std"); 
 
 const io = std.io;
 const os = std.os;
@@ -69,7 +69,7 @@ pub fn build(b: *Builder) void {
     const dump_step = b.step("dump", "Dump symbols");
     dump_step.dependOn(&exe.step);
 
-    const run_objdump = b.addSystemCommand(&[_][]const u8{"llvm-objcopy-13"});
+    const run_objdump = b.addSystemCommand(&[_][]const u8{"llvm-objcopy"});
     run_objdump.addArtifactArg(exe);
     run_objdump.addArgs(&[_][]const u8{ "-O", "binary", "zig-out/bin/kernel8" });
 
@@ -88,13 +88,13 @@ pub fn build(b: *Builder) void {
     run_qemu.addArtifactArg(exe);
     run_qemu.addArgs(&[_][]const u8{
         "-m",
-        "256",
-        "-M",
+        "1024",
+        "-M", 
         "raspi3",
         "-serial",
         if (want_pty) "pty" else "stdio",
     });
-    if (want_gdb) {
+    if (want_gdb) { 
         run_qemu.addArgs(&[_][]const u8{
             "-S",
             "-s",
@@ -113,8 +113,10 @@ pub fn build(b: *Builder) void {
     qemu.dependOn(&run_create_syms.step);
     qemu.dependOn(&run_qemu.step);
 
+    b.installArtifact(exe);
+
     b.default_step.dependOn(&run_objdump.step);
     b.default_step.dependOn(&run_create_syms.step);
 
-    b.installArtifact(exe);
+    
 }
