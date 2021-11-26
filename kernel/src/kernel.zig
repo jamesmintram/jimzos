@@ -23,12 +23,12 @@ const page = @import("vm/page.zig");
 const vm = @import("vm.zig");
 const kernel_elf = @import("kernel_elf.zig");
 
-fn some_crash2() !void {
+fn someCrash2() !void {
     return error.Err;
 }
 
-fn some_crash() !void {
-    try some_crash2();
+fn someCrash() !void {
+    try someCrash2();
 }
 
 export fn kmain() noreturn {
@@ -44,14 +44,14 @@ export fn kmain() noreturn {
     ptr.* = 2;
 
     // Get inside a thread context ASAP
-    var init_thread = thread.create_initial_thread(&vm.get_page_frame_manager().allocator, kmain_init) catch unreachable;
+    var init_thread = thread.create_initial_thread(&vm.get_page_frame_manager().allocator, kmainInit) catch unreachable;
     thread.switch_to_initial(init_thread);
 
     kprint.write("End of kmain\r", .{});
     unreachable;
 }
 
-fn kmain_init() noreturn {
+fn kmainInit() noreturn {
     // framebuffer.init().?;
     // framebuffer.write("JimZOS v{}\r", .{util.Version});
 
@@ -76,7 +76,7 @@ fn kmain_init() noreturn {
 
     // kprint.write("Create init thread\r", .{});
     // //TODO: Initialize the kernel bump allocator (which will just use the vm/page module)
-    // var alt_thread = thread.create_initial_thread(&vm.get_page_frame_manager().allocator, kmain_alt) catch unreachable;
+    // var alt_thread = thread.create_initial_thread(&vm.get_page_frame_manager().allocator, kmainAlt) catch unreachable;
 
     // kprint.write("Swotcj\r", .{});
     // thread.switch_to(alt_thread);
@@ -90,7 +90,7 @@ fn kmain_init() noreturn {
     }
 }
 
-fn kmain_alt() noreturn {
+fn kmainAlt() noreturn {
     kprint.write("Entered alt thread\r", .{});
 
     while (true) {
@@ -100,12 +100,12 @@ fn kmain_alt() noreturn {
 }
 
 pub fn panic(msg: []const u8, error_return_trace: ?*builtin.StackTrace) noreturn {
-    @import("panic.zig").handle_panic(msg, error_return_trace);
+    @import("panic.zig").handlePanic(msg, error_return_trace);
 }
 
 export fn exception_panic(esr_el1: u64, elr_el1: u64, spsr_el1: u64, far_el1: u64) noreturn {
     
-    @import("panic.zig").print_guru("Unhandled synchronous exception triggered");
+    @import("panic.zig").printGuru("Unhandled synchronous exception triggered");
     
     kprint.write("esr_el1:  0x{x:0>16}\r", .{esr_el1});
     kprint.write("spsr_el1: 0x{x:0>16}\r", .{spsr_el1});
@@ -114,7 +114,7 @@ export fn exception_panic(esr_el1: u64, elr_el1: u64, spsr_el1: u64, far_el1: u6
     // elr_el1 should contain an address to a source code location, lets
     // try to print it.
     kprint.write("elr_el1:  ", .{});
-    @import("panic.zig").print_address(elr_el1) catch unreachable;
+    @import("panic.zig").printAddress(elr_el1) catch unreachable;
 
     while(true) {}
 }

@@ -8,7 +8,7 @@ var kernel_panic_allocator_bytes: [5 * 1024 * 1024]u8 = undefined;
 var kernel_panic_allocator_state = std.heap.FixedBufferAllocator.init(kernel_panic_allocator_bytes[0..]);
 const kernel_panic_allocator = &kernel_panic_allocator_state.allocator;
 
-fn dump_stack_trace(dwarf_info: *std.dwarf.DwarfInfo, stack_trace: *builtin.StackTrace) !void {
+fn dumpStackTrace(dwarf_info: *std.dwarf.DwarfInfo, stack_trace: *builtin.StackTrace) !void {
     try std.dwarf.openDwarfDebugInfo(dwarf_info, kernel_panic_allocator);
 
     var frame_index: usize = 0;
@@ -39,7 +39,7 @@ fn dump_stack_trace(dwarf_info: *std.dwarf.DwarfInfo, stack_trace: *builtin.Stac
     }
 }
 
-fn extract_dwarf_info(kernel: *kernel_elf.KernelElf) !std.dwarf.DwarfInfo {
+fn extractDwarfInfo(kernel: *kernel_elf.KernelElf) !std.dwarf.DwarfInfo {
     var section_headers_arr: [64]std.elf.Elf64_Shdr = undefined;
     var section_headers = section_headers_arr[0..kernel.header.shnum];
 
@@ -99,7 +99,7 @@ fn extract_dwarf_info(kernel: *kernel_elf.KernelElf) !std.dwarf.DwarfInfo {
 
 var already_panicking: bool = false;
 
-pub fn handle_panic(msg: []const u8, error_return_trace: ?*builtin.StackTrace) noreturn {
+pub fn handlePanic(msg: []const u8, error_return_trace: ?*builtin.StackTrace) noreturn {
     _ = error_return_trace;
 
     if (already_panicking) {
@@ -108,13 +108,13 @@ pub fn handle_panic(msg: []const u8, error_return_trace: ?*builtin.StackTrace) n
     }
     already_panicking = true;
 
-    print_guru(msg);
+    printGuru(msg);
 
-    var debug_info = extract_dwarf_info(kernel_elf.get()) catch unreachable;
+    var debug_info = extractDwarfInfo(kernel_elf.get()) catch unreachable;
 
     if (error_return_trace) |stack_trace| {
         kprint.write("Dumping stack trace\r", .{});
-        dump_stack_trace(&debug_info, stack_trace) catch unreachable;
+        dumpStackTrace(&debug_info, stack_trace) catch unreachable;
     } else {
         kprint.write("No stack trace available\r", .{});
     }
@@ -122,7 +122,7 @@ pub fn handle_panic(msg: []const u8, error_return_trace: ?*builtin.StackTrace) n
     while (true) {}
 }
 
-pub fn print_guru(msg: []const u8) void {
+pub fn printGuru(msg: []const u8) void {
     kprint.write("+=================+\r", .{});
     kprint.write("| GURU MEDITATION |\r", .{});
     kprint.write("+=================+\r", .{});
@@ -131,8 +131,8 @@ pub fn print_guru(msg: []const u8) void {
     kprint.write("\r", .{});
 }
 
-pub fn print_address(address:u64) !void {
-    var debug_info = try extract_dwarf_info(kernel_elf.get());
+pub fn printAddress(address:u64) !void {
+    var debug_info = try extractDwarfInfo(kernel_elf.get());
     try std.dwarf.openDwarfDebugInfo(&debug_info, kernel_panic_allocator);
 
     var compile_unit = debug_info.findCompileUnit(address) catch {
