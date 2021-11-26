@@ -101,12 +101,20 @@ pub fn build(b: *Builder) void {
         });
     }
 
+    //FIXME Update this to use the output path to the elf
+    run_qemu.addArgs(&[_][]const u8{
+            "-device",
+            "loader,file=zig-out/bin/kernel8.elf,addr=0x1000000,force-raw=true"
+        });
+
     // Can we configure a gdb option? Which would launch gdb, connect it to qemu and have it ready to go
 
     qemu.dependOn(&run_objdump.step);
     qemu.dependOn(&run_create_syms.step);
     qemu.dependOn(&run_qemu.step);
 
-    b.default_step.dependOn(&exe.step);
+    b.default_step.dependOn(&run_objdump.step);
+    b.default_step.dependOn(&run_create_syms.step);
+
     b.installArtifact(exe);
 }
