@@ -1,11 +1,8 @@
 # jimzos
 
-Move StackFrame and hardware dependent context switching into aarch
-Single threaded spinlock
-- Build an auto-release mechanism?
-- Detect context switch when spinlock held (panic)
-- Recursive spinlock? (Counter?)
-- Save, Disable + Restore interrupts
+Cleanup
+- Prekernel: Load kernel elf, enable MMU, jump to kernel main
+- Move StackFrame and hardware dependent context switching into aarch
 
 Proper init of the Kernel Allocator
 How is the Kernel Allocator used? Globally accessible? USE A BIG KERNEL LOCK!
@@ -14,6 +11,12 @@ Page Frame Allocator
 - Needs its own memory
 - Gives pages to things
 - Doesn't know anything about kernel allocator (things above it)
+
+Single threaded spinlock
+- Build an auto-release mechanism?
+- Detect context switch when spinlock held (panic)
+- Recursive spinlock? (Counter?)
+- Save, Disable + Restore interrupts
 
 Bootstrap Kernel Allocator
 - Relies on the Page Frame Allocator for its memory
