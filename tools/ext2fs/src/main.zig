@@ -26,7 +26,7 @@ pub fn printBlockGroupDescriptor(block_group_descriptor: *const ext2.Ext2_BlockG
 pub fn main() anyerror!void {
     std.log.info("Inspect an ext2 image", .{});
 
-    const fname = "test1.img";
+    const fname = "data/test1.img";
 
     var f = std.fs.cwd().openFile(fname, std.fs.File.OpenFlags{ .read = true }) catch {
         std.log.err("Error opening file: {s}", .{fname});
