@@ -81,15 +81,24 @@ pub const Ext2_SuperBlock = extern struct {
     s_def_resuid: u16,
     s_def_resgid: u16,
 
+    pub fn block_group_count(self: *const Ext2_SuperBlock) u32 {
+        return self.s_blocks_count / self.s_blocks_per_group;
+    }
+
+    pub fn block_group_size(self: *const Ext2_SuperBlock) u32 {
+        return self.s_blocks_per_group * self.block_size();
+    }
+
     pub fn block_size(self: *const Ext2_SuperBlock) u32 {
         return @intCast(u32, 1024) << @intCast(u4, self.s_log_block_size);
     }
 
     pub fn block_index_for_block_group_descriptor(self: *const Ext2_SuperBlock, block_group_index: u32) u32 {
-        return self.s_first_data_block + block_group_index;
+        // FIXME: Is this correct?
+        return self.s_first_data_block + self.s_blocks_per_group * (block_group_index - 1);
     }
 
-    pub fn block_offset_for_block_group_descriptor(self: *const Ext2_SuperBlock, block_index: u32) u32 {
+    pub fn offset_for_block_index(self: *const Ext2_SuperBlock, block_index: u32) u32 {
         return block_index * self.block_size();
     }
 };
@@ -118,7 +127,7 @@ pub const FS = struct {
 
         //FIXME: Assert that block_index < self.s_blocks_count (TEST)
 
-        var block_position = super_block.block_offset_for_block_group_descriptor(block_index);
+        var block_position = super_block.offset_for_block_index(block_index);
 
         //FIXME: Improve this, can we write directly into the struct?
         var block_group_descriptor_buf: [@sizeOf(Ext2_BlockGroupDescriptor)]u8 align(@alignOf(Ext2_BlockGroupDescriptor)) = undefined;
