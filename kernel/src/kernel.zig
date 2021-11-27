@@ -10,6 +10,7 @@ const assert = debug.assert;
 
 const process = @import("proc.zig");
 const thread = @import("thread.zig");
+const ext2 = @import("fs/ext2/ext2.zig");
 
 const mem = std.mem;
 const Allocator = mem.Allocator;
