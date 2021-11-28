@@ -2,6 +2,10 @@
 
 Ext2 FS:
 - GOAL: `tree` all test disk images
+-- Add support for outputting to something formattable? "{}", .{inode}
+-- Nested folders,
+-- Improve the iterator
+-- Reading file data - API? (How do I read X amount of data)
 
 Cleanup
 - Prekernel: Load kernel elf, enable MMU, jump to kernel main
