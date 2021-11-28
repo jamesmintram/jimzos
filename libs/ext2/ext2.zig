@@ -19,6 +19,14 @@ pub const Ext2_DirectoryEntry = extern struct {
     name: [*]u8,
 };
 
+pub const EXT2_S_IFSOCK = 0xC000; // socket
+pub const EXT2_S_IFLNK = 0xA000; //	symbolic link
+pub const EXT2_S_IFREG = 0x8000; //	regular file
+pub const EXT2_S_IFBLK = 0x6000; //	block device
+pub const EXT2_S_IFDIR = 0x4000; //	directory
+pub const EXT2_S_IFCHR = 0x2000; //	character device
+pub const EXT2_S_IFIFO = 0x1000; //	fifo
+
 pub const Ext2_InodeTableEntry = extern struct {
     i_mode: u16,
     i_uid: u16,
@@ -108,7 +116,12 @@ pub const Ext2_SuperBlock = extern struct {
 
     pub fn block_index_for_block_group_descriptor(self: *const Ext2_SuperBlock, block_group_index: u32) u32 {
         //FIXME +1 is important as the block descriptor - need to explain why
-        return self.s_first_data_block + self.s_blocks_per_group * block_group_index + 1;
+        // @import("std").log.info("block_index_for_block_group_descriptor:: {} {} {}", .{
+        //     self.s_first_data_block,
+        //     self.s_blocks_per_group,
+        //     block_group_index,
+        // });
+        return self.s_first_data_block + (self.s_blocks_per_group * block_group_index) + 1;
     }
 
     pub fn offset_for_block_index(self: *const Ext2_SuperBlock, block_index: u32) u32 {
@@ -141,12 +154,17 @@ pub const Ext2_SuperBlock = extern struct {
 
     //FIXME: Remove parse_source: anytype param
     pub fn block_descriptor_at(self: *const Ext2_SuperBlock, parse_source: anytype, block_group_index: u32) !Ext2_BlockGroupDescriptor {
+        // @import("std").log.info("block_descriptor_at:: {}", .{block_group_index});
+
         //FIXME: Assert that block_group_index > 0 (as zero is superblock) (TEST)
         var block_index = self.block_index_for_block_group_descriptor(block_group_index);
+        // @import("std").log.info("block_descriptor_at::block_index {}", .{block_index});
 
         //FIXME: Assert that block_index < self.s_blocks_count (TEST)
 
         var block_position = self.offset_for_block_index(block_index);
+
+        // @import("std").log.info("block_descriptor_at::block_position {}", .{block_position});
 
         //FIXME: Improve this, can we write directly into the struct?
         var block_group_descriptor_buf: [@sizeOf(Ext2_BlockGroupDescriptor)]u8 align(@alignOf(Ext2_BlockGroupDescriptor)) = undefined;
@@ -162,10 +180,13 @@ pub const Ext2_SuperBlock = extern struct {
 pub fn DirectoryEntryIterator(ParseSource: anytype) type {
     return struct {
         parse_source: ParseSource,
-        position: u32, // Current position in the filesystem
+        position: u32, // Position of the next entry in the filesystem
+
         current: Ext2_DirectoryEntry = undefined,
+        current_name_pos: u32 = 0,
         current_name: [255:0]u8 = undefined,
-        super_block: *Ext2_SuperBlock,
+
+        super_block: Ext2_SuperBlock, //TODO: Change to a ref
 
         // Lazily reads the filename. Laziness achieved by setting the
         // current_name[0] = 0 to signify the value has not yet been set.
@@ -173,6 +194,10 @@ pub fn DirectoryEntryIterator(ParseSource: anytype) type {
             const name_len = self.current.name_length;
 
             if (self.current_name[0] == 0 and name_len > 0) {
+                self.parse_source.seekableStream().seekTo(self.current_name_pos) catch {
+                    self.current_name[0] = 0;
+                    return &self.current_name;
+                };
                 self.parse_source.reader().readNoEof(self.current_name[0..name_len]) catch {
                     self.current_name[0] = 0;
                     return &self.current_name;
@@ -184,31 +209,35 @@ pub fn DirectoryEntryIterator(ParseSource: anytype) type {
             return &self.current_name;
         }
 
-        pub fn file_type(self: *@This()) u8 {
+        pub fn file_type(self: *@This()) !u8 {
             if (self.super_block.s_rev_level > 0) return self.current.file_type;
 
-            // fs.. doh!
-            // var inode = try self.super_block.inode_at(self.parse_source, self.current.inode);
-            // _ = inode;
-            return 2;
+            var inode = try self.super_block.inode_at(self.parse_source, self.current.inode);
+
+            // TODO: Map other types of file
+            if (inode.i_mode & EXT2_S_IFREG != 0) return EXT2_FT_REG_FILE;
+            if (inode.i_mode & EXT2_S_IFDIR != 0) return EXT2_FT_DIR;
+
+            // @import("std").log.info("Unknown file_type {X}", .{inode.i_mode});
+
+            return 0;
         }
 
         pub fn next(self: *@This()) !?*Ext2_DirectoryEntry {
             // FIXME: Executes with the current values on return.. is this weird?
             defer self.position += self.current.record_length;
 
-            @import("std").log.info("READ ENTRY: {X}", .{self.position});
+            // @import("std").log.info("READ ENTRY: {X}", .{self.position});
 
             var directory_entry_buf: [@sizeOf(Ext2_DirectoryEntry)]u8 align(@alignOf(Ext2_DirectoryEntry)) = undefined;
             try self.parse_source.seekableStream().seekTo(self.position);
             try self.parse_source.reader().readNoEof(&directory_entry_buf); //FIXME: Too Long (Shouldn't read the name ptr)
             var directory_entry = @ptrCast(*const Ext2_DirectoryEntry, &directory_entry_buf);
 
-            try self.parse_source.seekableStream().seekTo(self.position + @offsetOf(Ext2_DirectoryEntry, "name"));
-
             // Reset the current name
             self.current_name[0] = 0;
             self.current = directory_entry.*;
+            self.current_name_pos = self.position + @offsetOf(Ext2_DirectoryEntry, "name");
 
             // FIXME: Ternery?
             if (self.current.inode == 0) return null;
@@ -248,7 +277,7 @@ pub const FS = struct {
             .parse_source = parse_source,
             .position = directory_entry_position,
             .current = directory_entry.*,
-            .super_block = &super_block,
+            .super_block = super_block,
         };
     }
 

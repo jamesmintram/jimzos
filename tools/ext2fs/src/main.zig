@@ -90,9 +90,9 @@ pub fn main() anyerror!void {
     while (try directory_entry_iterator.next()) |_| {
         //FIXME: Should pass in a struct containg meta + dir entry
         //printDirectoryEntry(dir_entry);
-        switch (directory_entry_iterator.file_type()) {
-            ext2.EXT2_FT_DIR => std.log.info("DIRECTORY: {s}", .{directory_entry_iterator.name()}),
-            ext2.EXT2_FT_REG_FILE => std.log.info("FILE: {s}", .{directory_entry_iterator.name()}),
+        switch (try directory_entry_iterator.file_type()) {
+            ext2.EXT2_FT_DIR => std.log.info("{s}/", .{directory_entry_iterator.name()}),
+            ext2.EXT2_FT_REG_FILE => std.log.info("{s}", .{directory_entry_iterator.name()}),
             else => |v| std.log.info("UNKNOWN {}: {s}", .{ v, directory_entry_iterator.name() }),
         }
     }
