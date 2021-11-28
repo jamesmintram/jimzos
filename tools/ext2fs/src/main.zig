@@ -2,6 +2,8 @@ const std = @import("std");
 const ext2 = @import("ext2");
 
 // Doc: https://www.nongnu.org/ext2-doc/ext2.html#s-magic
+//      https://uranus.chrysocome.net/explore2fs/es2fs.htm
+//      http://www.science.unitn.it/~fiorella/guidelinux/tlk/node95.html
 
 // FIXME: What do we pass in here? Look at elf+dwarf parser for inspiration?
 pub fn printSuperBlock(super_block: *const ext2.Ext2_SuperBlock) void {
