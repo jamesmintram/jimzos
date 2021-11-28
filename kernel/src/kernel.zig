@@ -104,6 +104,8 @@ pub fn panic(msg: []const u8, error_return_trace: ?*builtin.StackTrace) noreturn
     @import("panic.zig").handlePanic(msg, error_return_trace);
 }
 
+extern fn exit() noreturn;
+
 export fn exception_panic(esr_el1: u64, elr_el1: u64, spsr_el1: u64, far_el1: u64) noreturn {
     
     @import("panic.zig").printGuru("Unhandled synchronous exception triggered");
@@ -117,5 +119,5 @@ export fn exception_panic(esr_el1: u64, elr_el1: u64, spsr_el1: u64, far_el1: u6
     kprint.write("elr_el1:  ", .{});
     @import("panic.zig").printAddress(elr_el1) catch unreachable;
 
-    while(true) {}
+    exit();
 }

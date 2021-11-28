@@ -36,7 +36,7 @@ pub fn build(b: *Builder) void {
     write_struct_def(thread.CPUFrame);
 
     const want_gdb = b.option(bool, "gdb", "Build for QEMU gdb server") orelse false;
-    const want_pty = b.option(bool, "pty", "Create a separate serial port path") orelse false;
+    // const want_pty = b.option(bool, "pty", "Create a separate serial port path") orelse false;
 
     const mode = b.standardReleaseOptions();
 
@@ -81,18 +81,15 @@ pub fn build(b: *Builder) void {
 
     const qemu = b.step("qemu", "run kernel in qemu");
 
-    //const qemu_path = if (builtin.os == builtin.os.windows) "C:/Program Files/qemu/qemu-system-aarch64.exe" else "qemu-system-aarch64";
     const qemu_path = "qemu-system-aarch64";
     const run_qemu = b.addSystemCommand(&[_][]const u8{qemu_path});
     run_qemu.addArg("-kernel");
     run_qemu.addArtifactArg(exe);
     run_qemu.addArgs(&[_][]const u8{
-        "-m",
-        "1024",
-        "-M", 
-        "raspi3",
-        "-serial",
-        if (want_pty) "pty" else "stdio",
+        "-m", "1024",
+        "-M", "raspi3b",
+        "-nographic",
+        "-semihosting",
     });
     if (want_gdb) { 
         run_qemu.addArgs(&[_][]const u8{

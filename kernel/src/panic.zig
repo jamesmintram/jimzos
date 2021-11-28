@@ -99,6 +99,8 @@ fn extractDwarfInfo(kernel: *kernel_elf.KernelElf) !std.dwarf.DwarfInfo {
 
 var already_panicking: bool = false;
 
+extern fn exit() noreturn;
+
 pub fn handlePanic(msg: []const u8, error_return_trace: ?*builtin.StackTrace) noreturn {
     _ = error_return_trace;
 
@@ -119,7 +121,7 @@ pub fn handlePanic(msg: []const u8, error_return_trace: ?*builtin.StackTrace) no
         kprint.write("No stack trace available\r", .{});
     }
 
-    while (true) {}
+    exit();
 }
 
 pub fn printGuru(msg: []const u8) void {

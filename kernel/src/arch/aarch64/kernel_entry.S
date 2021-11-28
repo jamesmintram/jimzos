@@ -55,10 +55,24 @@ __hang:
 .global exit
 exit:
   //TODO: Configure this differently for Qemu vs Silicone
-  b __hang
+  //b __hang
   mov w0, 0x18
+
+  // ADP_Stopped_ApplicationExit
   mov x1, #0x20000
-  add x1, x1, #0x26
+  add x1, x1, #0x26 
+  str x1, [sp, 1]
+
+  // Exit code to return via emulator
+  mov x2, 0
+
+  // Store the parameters
+  stp x1, x2, [sp]
+
+  // Setup the pointer to the params
+  mov x1, sp
+
+  // Call semihosting
   hlt #0xF000
 
 .global call
