@@ -53,6 +53,7 @@ fn kmainInit() noreturn {
     //          - Switching address space
     //          - Pre-allocate some heap + stack space (Later we can on demand)
 
+    // testCrashes();
 
     const total_memory = 1024 * 1024 * 1024; //1GB
     const memory_start = 0x000000000038e000 + 0x1000000; //__heap_phys_start; FIXME - relocation error when using symbol
