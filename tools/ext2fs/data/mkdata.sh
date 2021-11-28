@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 genext2fs -b 64 -d ./test1/ test1.img
 genext2fs -b 512 -d ./test2/ test2.img

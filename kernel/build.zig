@@ -1,5 +1,5 @@
 const builtin = @import("builtin");
-const std = @import("std"); 
+const std = @import("std");
 
 const io = std.io;
 const os = std.os;
@@ -41,6 +41,8 @@ pub fn build(b: *Builder) void {
     const mode = b.standardReleaseOptions();
 
     const exe = b.addExecutable("kernel8.elf", "src/kernel.zig");
+
+    exe.addPackagePath("ext2", "../libs/ext2/ext2.zig");
 
     exe.addAssemblyFile("src/arch/aarch64/kernel_entry.S");
     exe.addAssemblyFile("src/arch/aarch64/kernel_pre.S");
@@ -86,12 +88,11 @@ pub fn build(b: *Builder) void {
     run_qemu.addArg("-kernel");
     run_qemu.addArtifactArg(exe);
     run_qemu.addArgs(&[_][]const u8{
-        "-m", "1024",
-        "-M", "raspi3b",
-        "-nographic",
-        "-semihosting",
+        "-m",         "1024",
+        "-M",         "raspi3b",
+        "-nographic", "-semihosting",
     });
-    if (want_gdb) { 
+    if (want_gdb) {
         run_qemu.addArgs(&[_][]const u8{
             "-S",
             "-s",
@@ -100,9 +101,15 @@ pub fn build(b: *Builder) void {
 
     //FIXME Update this to use the output path to the elf
     run_qemu.addArgs(&[_][]const u8{
-            "-device",
-            "loader,file=zig-out/bin/kernel8.elf,addr=0x1000000,force-raw=true"
-        });
+        "-device",
+        "loader,file=zig-out/bin/kernel8.elf,addr=0x1000000,force-raw=true",
+    });
+
+    //FIXME: This is temporary while we test (Wonder if we can do this based on some per-test config?)
+    run_qemu.addArgs(&[_][]const u8{
+        "-device",
+        "loader,file=../tools/ext2fs/data/test1.img,addr=0x2000000,force-raw=true",
+    });
 
     // Can we configure a gdb option? Which would launch gdb, connect it to qemu and have it ready to go
 
@@ -115,6 +122,4 @@ pub fn build(b: *Builder) void {
 
     b.default_step.dependOn(&run_objdump.step);
     b.default_step.dependOn(&run_create_syms.step);
-
-    
 }
