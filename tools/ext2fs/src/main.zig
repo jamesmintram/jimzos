@@ -7,6 +7,7 @@ pub fn printSuperBlock(super_block: *const ext2.Ext2_SuperBlock) void {
     std.log.info("\tMagic                  0x{X}", .{super_block.s_magic});
     std.log.info("\tNumber of block groups {}", .{super_block.block_group_count()});
     std.log.info("\tBlock size             {}", .{super_block.block_size()});
+    std.log.info("\tRevsion:               {}.{}", .{ super_block.s_rev_level, super_block.s_minor_rev_level });
 
     std.log.info("\ts_blocks_count         {}", .{super_block.s_blocks_count});
     std.log.info("\ts_first_data_block     {}", .{super_block.s_first_data_block});
@@ -62,7 +63,7 @@ pub fn printDirectoryEntry(directory_entry: *const ext2.Ext2_DirectoryEntry) voi
 pub fn main() anyerror!void {
     std.log.info("Inspect an ext2 image (All your files are belong to us.)", .{});
 
-    const fname = "data/test1.img";
+    const fname = "data/test3.img";
 
     var f = std.fs.cwd().openFile(fname, std.fs.File.OpenFlags{ .read = true }) catch {
         std.log.err("Error opening file: {s}", .{fname});
@@ -75,22 +76,25 @@ pub fn main() anyerror!void {
 
     printSuperBlock(&super_block);
 
-    var block_descriptor = try fs.block_descriptor_at(f, 0);
+    var block_descriptor = try super_block.block_descriptor_at(f, 0);
     printBlockGroupDescriptor(&block_descriptor);
 
     // TODO: How to handle sparse superblocks
     // FIXME: Change magic number from 2 => Ext2RootInodeIndex
 
-    var inode = try fs.inode_at(f, &block_descriptor, 2);
+    var inode = try super_block.inode_table_at(f, &block_descriptor, 1); // 1 is reserved as root directory
     printInodeTableEntry(&inode);
 
     var directory_entry_iterator = try fs.directory_entry_iterator(f, &inode);
 
-    while (try directory_entry_iterator.next()) |dir_entry| {
-        printDirectoryEntry(dir_entry);
-        std.log.info("Name: {s}", .{directory_entry_iterator.name()});
-
-        std.log.info("", .{});
+    while (try directory_entry_iterator.next()) |_| {
+        //FIXME: Should pass in a struct containg meta + dir entry
+        //printDirectoryEntry(dir_entry);
+        switch (directory_entry_iterator.file_type()) {
+            ext2.EXT2_FT_DIR => std.log.info("DIRECTORY: {s}", .{directory_entry_iterator.name()}),
+            ext2.EXT2_FT_REG_FILE => std.log.info("FILE: {s}", .{directory_entry_iterator.name()}),
+            else => |v| std.log.info("UNKNOWN {}: {s}", .{ v, directory_entry_iterator.name() }),
+        }
     }
 }
 
