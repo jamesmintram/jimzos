@@ -11,6 +11,8 @@ pub fn printSuperBlock(super_block: *const ext2.Ext2_SuperBlock) void {
     std.log.info("\ts_blocks_count         {}", .{super_block.s_blocks_count});
     std.log.info("\ts_first_data_block     {}", .{super_block.s_first_data_block});
     std.log.info("\ts_blocks_per_group     {}", .{super_block.s_blocks_per_group});
+
+    std.log.info("\ts_inodes_per_group     {}", .{super_block.s_inodes_per_group});
 }
 
 pub fn printBlockGroupDescriptor(block_group_descriptor: *const ext2.Ext2_BlockGroupDescriptor) void {
@@ -23,6 +25,35 @@ pub fn printBlockGroupDescriptor(block_group_descriptor: *const ext2.Ext2_BlockG
     std.log.info("\tbg_free_blocks_count:  {}", .{block_group_descriptor.bg_free_blocks_count});
     std.log.info("\tbg_free_inodes_count:  {}", .{block_group_descriptor.bg_free_inodes_count});
     std.log.info("\tbg_used_dirs_count:    {}", .{block_group_descriptor.bg_used_dirs_count});
+}
+
+pub fn printInodeTableEntry(inode: *const ext2.Ext2_InodeTableEntry) void {
+    std.log.info("Inode Table Entry:", .{});
+    std.log.info("\ti_mode:                {X:0>4}", .{inode.i_mode});
+    std.log.info("\ti_size:                {}", .{inode.i_size});
+    std.log.info("\ti_atime:               {}", .{inode.i_atime});
+    std.log.info("\ti_ctime:               {}", .{inode.i_ctime});
+    std.log.info("\ti_mtime:               {}", .{inode.i_mtime});
+    std.log.info("\ti_dtime:               {}", .{inode.i_dtime});
+    std.log.info("\ti_gid:                 {}", .{inode.i_gid});
+
+    std.log.info("\ti_links_count:         {}", .{inode.i_links_count});
+    std.log.info("\ti_blocks:              {}", .{inode.i_blocks});
+
+    std.log.info("\ti_block[0]:            {X}", .{inode.i_block[0]});
+    std.log.info("\ti_block[1]:            {X}", .{inode.i_block[1]});
+    std.log.info("\ti_block[2]:            {X}", .{inode.i_block[2]});
+    std.log.info("\ti_block[3]:            {X}", .{inode.i_block[3]});
+    std.log.info("\ti_block[4]:            {X}", .{inode.i_block[4]});
+    std.log.info("\ti_block[5]:            {X}", .{inode.i_block[5]});
+}
+
+pub fn printDirectoryEntry(directory_entry: *const ext2.Ext2_DirectoryEntry) void {
+    std.log.info("Directory Entry:", .{});
+    std.log.info("\tinode:                  {}", .{directory_entry.inode});
+    std.log.info("\trecord_length:          {}", .{directory_entry.record_length});
+    std.log.info("\tname_length:            {}", .{directory_entry.name_length});
+    std.log.info("\tfile_type:              {X}", .{directory_entry.file_type});
 }
 
 // FIXME: Fails when s_first_data_block == 0 (file: test1_4kb.img)
@@ -44,13 +75,17 @@ pub fn main() anyerror!void {
 
     printSuperBlock(&super_block);
 
-    std.log.info("Offset: {}", .{super_block.block_index_for_block_group_descriptor(1)});
-    printBlockGroupDescriptor(&try fs.block_descriptor_at(f, 0));
+    var block_descriptor = try fs.block_descriptor_at(f, 0);
+    printBlockGroupDescriptor(&block_descriptor);
 
-    if (super_block.block_group_count() > 1) {
-        std.log.info("Offset: {}", .{super_block.block_index_for_block_group_descriptor(2)});
-        printBlockGroupDescriptor(&try fs.block_descriptor_at(f, 1));
-    }
+    // TODO: How to handle sparse superblocks
+    // FIXME: Change magic number from 2 => Ext2RootInodeIndex
+
+    var inode = try fs.inode_at(f, &block_descriptor, 2);
+    printInodeTableEntry(&inode);
+
+    var dir_entry = try fs.directory_entry_iterator(f, &inode);
+    printDirectoryEntry(&dir_entry);
 }
 
 test "basic test" {

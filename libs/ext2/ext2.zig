@@ -3,11 +3,11 @@
 //      http://www.science.unitn.it/~fiorella/guidelinux/tlk/node95.html
 
 pub const Ext2_DirectoryEntry = extern struct {
-    inode: u32,
-    rec_len: u16,
-    name_len: u8,
-    file_type: u8,
-    name: [255]u8,
+    inode: u32, // 0 == not used
+    record_length: u16, // offset to the next record entry
+    name_length: u8, // can never be move than rec_len - 8
+    file_type: u8, // File type
+    name: [*]u8,
 };
 
 pub const Ext2_InodeTableEntry = extern struct {
@@ -98,8 +98,8 @@ pub const Ext2_SuperBlock = extern struct {
     }
 
     pub fn block_index_for_block_group_descriptor(self: *const Ext2_SuperBlock, block_group_index: u32) u32 {
-        // FIXME: Is this correct?
-        return self.s_first_data_block + self.s_blocks_per_group * block_group_index;
+        //FIXME +1 is important as the block descriptor - need to explain why
+        return self.s_first_data_block + self.s_blocks_per_group * block_group_index + 1;
     }
 
     pub fn offset_for_block_index(self: *const Ext2_SuperBlock, block_index: u32) u32 {
@@ -120,6 +120,43 @@ pub const FS = struct {
 
         //FIXME: Pass in an *out* param?
         return super_block.*;
+    }
+
+    //FIXME: Make an iterator
+    pub fn directory_entry_iterator(self: *const FS, parse_source: anytype, inode: *Ext2_InodeTableEntry) !Ext2_DirectoryEntry {
+        var super_block = try self.superblock(parse_source);
+
+        // FIXME: How to deal with the filename? When to read it and where to place it? file_name(dir_entry)??
+        var block_idx = inode.i_block[0];
+        var directory_entry_position = super_block.offset_for_block_index(block_idx);
+
+        @import("std").log.info("directory_entry_position: {X}", .{directory_entry_position});
+
+        var directory_entry_buf: [@sizeOf(Ext2_DirectoryEntry)]u8 align(@alignOf(Ext2_DirectoryEntry)) = undefined;
+        try parse_source.seekableStream().seekTo(directory_entry_position);
+        try parse_source.reader().readNoEof(&directory_entry_buf);
+        var directory_entry = @ptrCast(*const Ext2_DirectoryEntry, &directory_entry_buf);
+
+        //FIXME: Pass in an *out* param?
+        return directory_entry.*;
+    }
+
+    pub fn inode_at(self: *const FS, parse_source: anytype, block_descriptor: *const Ext2_BlockGroupDescriptor, inode: u32) !Ext2_InodeTableEntry {
+        // FIXME: Verify inode >= 1 OR error
+        // FIXME: Verify inode_index <= super_block.s_inodes_per_group OR error
+        const inode_index = inode - 1;
+
+        var super_block = try self.superblock(parse_source);
+        var inode_position = super_block.offset_for_block_index(block_descriptor.bg_inode_table) + @sizeOf(Ext2_InodeTableEntry) * inode_index;
+
+        //FIXME: Improve this, can we write directly into the struct?
+        var inode_table_entry_buf: [@sizeOf(Ext2_InodeTableEntry)]u8 align(@alignOf(Ext2_InodeTableEntry)) = undefined;
+        try parse_source.seekableStream().seekTo(inode_position);
+        try parse_source.reader().readNoEof(&inode_table_entry_buf);
+        var inode_table_entry = @ptrCast(*const Ext2_InodeTableEntry, &inode_table_entry_buf);
+
+        //FIXME: Pass in an *out* param?
+        return inode_table_entry.*;
     }
 
     //FIXME: Remove parse_source: anytype param
