@@ -10,7 +10,6 @@ const assert = debug.assert;
 
 const process = @import("proc.zig");
 const thread = @import("thread.zig");
-const ext2 = @import("fs/ext2/ext2.zig");
 
 const mem = std.mem;
 const Allocator = mem.Allocator;
@@ -24,14 +23,6 @@ const page = @import("vm/page.zig");
 const vm = @import("vm.zig");
 const kernel_elf = @import("kernel_elf.zig");
 
-fn someCrash2() !void {
-    return error.Err;
-}
-
-fn someCrash() !void {
-    try someCrash2();
-}
-
 export fn kmain() noreturn {
     arch_init.init();
     kernel_elf.init() catch unreachable;
@@ -39,10 +30,7 @@ export fn kmain() noreturn {
 
     kprint.write("JimZOS v{s}\r", .{util.Version});
 
-    //some_crash() catch @panic("Oh bum");
-
-    var ptr : *u8 = @intToPtr(*u8, 0xFFFFFFFFFFFFFFFF);
-    ptr.* = 2;
+    //test_crashes();
 
     // Get inside a thread context ASAP
     var init_thread = thread.create_initial_thread(&vm.get_page_frame_manager().allocator, kmainInit) catch unreachable;
@@ -64,19 +52,17 @@ fn kmainInit() noreturn {
     //          - Switching address space
     //          - Pre-allocate some heap + stack space (Later we can on demand)
 
-    // Test our crash out here
 
-    // const total_memory = 1024 * 1024 * 1024; //1GB
-    // const memory_start = 0x000000000038e000 + 0x1000000; //__heap_phys_start; FIXME - relocation error when using symbol
-    // const available_memory = total_memory - memory_start;
-    // const page_count = available_memory / 4096; // page_size = 4096
+    const total_memory = 1024 * 1024 * 1024; //1GB
+    const memory_start = 0x000000000038e000 + 0x1000000; //__heap_phys_start; FIXME - relocation error when using symbol
+    const available_memory = total_memory - memory_start;
+    const page_count = available_memory / 4096; // page_size = 4096
 
-    // kprint.write("Pages\r", .{});
-    // page.add_phys_pages(@intToPtr(*page.Page, memory_start), memory_start, page_count);
+    kprint.write("Pages\r", .{});
+    page.add_phys_pages(@intToPtr(*page.Page, memory_start), memory_start, page_count);
     // // page.dump(uart);
 
     // kprint.write("Create init thread\r", .{});
-    // //TODO: Initialize the kernel bump allocator (which will just use the vm/page module)
     // var alt_thread = thread.create_initial_thread(&vm.get_page_frame_manager().allocator, kmainAlt) catch unreachable;
 
     // kprint.write("Swotcj\r", .{});
@@ -120,4 +106,18 @@ export fn exception_panic(esr_el1: u64, elr_el1: u64, spsr_el1: u64, far_el1: u6
     @import("panic.zig").printAddress(elr_el1) catch unreachable;
 
     exit();
+}
+
+fn testCrashes() void {
+    // const fn someCrash2 () !void {
+    //     return error.Err;
+    // }
+
+    // const fn someCrash () !void {
+    //     try someCrash2();
+    // }
+
+    //some_crash() catch @panic("Oh bum");
+    // var ptr : *u8 = @intToPtr(*u8, 0xFFFFFFFFFFFFFFFF);
+    // ptr.* = 2;
 }
