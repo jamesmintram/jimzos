@@ -107,6 +107,52 @@ pub const Ext2_SuperBlock = extern struct {
     }
 };
 
+pub fn DirectoryEntryIterator(ParseSource: anytype) type {
+    return struct {
+        parse_source: ParseSource,
+        position: u32, // Current position in the filesystem
+        current: Ext2_DirectoryEntry = undefined,
+        current_name: [255:0]u8 = undefined,
+
+        // Lazily reads the filename. Laziness achieved by setting the
+        // current_name[0] = 0 to signify the value has not yet been set.
+        pub fn name(self: *@This()) [*:0]u8 {
+            const name_len = self.current.name_length;
+
+            if (self.current_name[0] == 0 and name_len > 0) {
+                self.parse_source.reader().readNoEof(self.current_name[0..name_len]) catch {
+                    self.current_name[0] = 0;
+                    return &self.current_name;
+                };
+
+                self.current_name[name_len] = 0;
+            }
+
+            return &self.current_name;
+        }
+
+        pub fn next(self: *@This()) !?*Ext2_DirectoryEntry {
+            // FIXME: Executes with the current values on return.. is this weird?
+            defer self.position += self.current.record_length;
+
+            var directory_entry_buf: [@sizeOf(Ext2_DirectoryEntry)]u8 align(@alignOf(Ext2_DirectoryEntry)) = undefined;
+            try self.parse_source.seekableStream().seekTo(self.position);
+            try self.parse_source.reader().readNoEof(&directory_entry_buf);
+            var directory_entry = @ptrCast(*const Ext2_DirectoryEntry, &directory_entry_buf);
+
+            try self.parse_source.seekableStream().seekTo(self.position + @offsetOf(Ext2_DirectoryEntry, "name"));
+
+            // Reset the current name
+            self.current_name[0] = 0;
+            self.current = directory_entry.*;
+
+            // FIXME: Ternery?
+            if (self.current.inode == 0) return null;
+            return &self.current;
+        }
+    };
+}
+
 pub const FS = struct {
     //FIXME: Remove parse_source: anytype param
     pub fn superblock(self: *const FS, parse_source: anytype) !Ext2_SuperBlock {
@@ -122,23 +168,23 @@ pub const FS = struct {
         return super_block.*;
     }
 
-    //FIXME: Make an iterator
-    pub fn directory_entry_iterator(self: *const FS, parse_source: anytype, inode: *Ext2_InodeTableEntry) !Ext2_DirectoryEntry {
+    pub fn directory_entry_iterator(self: *const FS, parse_source: anytype, inode: *Ext2_InodeTableEntry) !DirectoryEntryIterator(@TypeOf(parse_source)) {
         var super_block = try self.superblock(parse_source);
 
         // FIXME: How to deal with the filename? When to read it and where to place it? file_name(dir_entry)??
         var block_idx = inode.i_block[0];
         var directory_entry_position = super_block.offset_for_block_index(block_idx);
 
-        @import("std").log.info("directory_entry_position: {X}", .{directory_entry_position});
-
         var directory_entry_buf: [@sizeOf(Ext2_DirectoryEntry)]u8 align(@alignOf(Ext2_DirectoryEntry)) = undefined;
         try parse_source.seekableStream().seekTo(directory_entry_position);
         try parse_source.reader().readNoEof(&directory_entry_buf);
         var directory_entry = @ptrCast(*const Ext2_DirectoryEntry, &directory_entry_buf);
 
-        //FIXME: Pass in an *out* param?
-        return directory_entry.*;
+        return DirectoryEntryIterator(@TypeOf(parse_source)){
+            .parse_source = parse_source,
+            .position = directory_entry_position,
+            .current = directory_entry.*,
+        };
     }
 
     pub fn inode_at(self: *const FS, parse_source: anytype, block_descriptor: *const Ext2_BlockGroupDescriptor, inode: u32) !Ext2_InodeTableEntry {

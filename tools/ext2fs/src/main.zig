@@ -84,8 +84,14 @@ pub fn main() anyerror!void {
     var inode = try fs.inode_at(f, &block_descriptor, 2);
     printInodeTableEntry(&inode);
 
-    var dir_entry = try fs.directory_entry_iterator(f, &inode);
-    printDirectoryEntry(&dir_entry);
+    var directory_entry_iterator = try fs.directory_entry_iterator(f, &inode);
+
+    while (try directory_entry_iterator.next()) |dir_entry| {
+        printDirectoryEntry(dir_entry);
+        std.log.info("Name: {s}", .{directory_entry_iterator.name()});
+
+        std.log.info("", .{});
+    }
 }
 
 test "basic test" {
