@@ -1,10 +1,6 @@
 const std = @import("std");
 const ext2 = @import("ext2");
 
-// Doc: https://www.nongnu.org/ext2-doc/ext2.html#s-magic
-//      https://uranus.chrysocome.net/explore2fs/es2fs.htm
-//      http://www.science.unitn.it/~fiorella/guidelinux/tlk/node95.html
-
 // FIXME: What do we pass in here? Look at elf+dwarf parser for inspiration?
 pub fn printSuperBlock(super_block: *const ext2.Ext2_SuperBlock) void {
     std.log.info("FS Info:", .{});
@@ -30,6 +26,7 @@ pub fn printBlockGroupDescriptor(block_group_descriptor: *const ext2.Ext2_BlockG
 }
 
 // FIXME: Fails when s_first_data_block == 0 (file: test1_4kb.img)
+// FIXME: Division by zero when calculating block_group_count
 
 pub fn main() anyerror!void {
     std.log.info("Inspect an ext2 image (All your files are belong to us.)", .{});
@@ -48,11 +45,11 @@ pub fn main() anyerror!void {
     printSuperBlock(&super_block);
 
     std.log.info("Offset: {}", .{super_block.block_index_for_block_group_descriptor(1)});
-    printBlockGroupDescriptor(&try fs.block_descriptor_at(f, 1));
+    printBlockGroupDescriptor(&try fs.block_descriptor_at(f, 0));
 
     if (super_block.block_group_count() > 1) {
         std.log.info("Offset: {}", .{super_block.block_index_for_block_group_descriptor(2)});
-        printBlockGroupDescriptor(&try fs.block_descriptor_at(f, 2));
+        printBlockGroupDescriptor(&try fs.block_descriptor_at(f, 1));
     }
 }
 

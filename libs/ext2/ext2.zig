@@ -1,3 +1,7 @@
+// Doc: https://www.nongnu.org/ext2-doc/ext2.html#s-magic
+//      https://uranus.chrysocome.net/explore2fs/es2fs.htm
+//      http://www.science.unitn.it/~fiorella/guidelinux/tlk/node95.html
+
 pub const Ext2_DirectoryEntry = extern struct {
     inode: u32,
     rec_len: u16,
@@ -95,7 +99,7 @@ pub const Ext2_SuperBlock = extern struct {
 
     pub fn block_index_for_block_group_descriptor(self: *const Ext2_SuperBlock, block_group_index: u32) u32 {
         // FIXME: Is this correct?
-        return self.s_first_data_block + self.s_blocks_per_group * (block_group_index - 1);
+        return self.s_first_data_block + self.s_blocks_per_group * block_group_index;
     }
 
     pub fn offset_for_block_index(self: *const Ext2_SuperBlock, block_index: u32) u32 {
