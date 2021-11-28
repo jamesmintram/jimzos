@@ -29,7 +29,8 @@ pub const BumpAllocator = struct {
         var return_address = self.addr;
         self.addr += aligned_len;
 
-        return @ptrCast([*]u8, @intToPtr(*u8, return_address))[0..alignPageAllocLen(aligned_len, n, len_align)];
+        const return_ptr = @ptrCast([*]u8,@intToPtr(*u8, return_address));
+        return return_ptr[0..alignPageAllocLen(aligned_len, n, len_align)];
     }
 
     pub fn resize(
@@ -47,18 +48,13 @@ pub const BumpAllocator = struct {
         _ = len_align;
         _ = return_address;
 
-        //const self = @fieldParentPtr(Self, "allocator", allocator);
-        //const new_size_aligned = mem.alignForward(new_size, mem.page_size);
-
-        //FIXME  std/heap.zig:234 (BumpAllocator)
         return error.OutOfMemory;
     }
 };
 
 pub fn create() BumpAllocator {
     return BumpAllocator{
-        // .addr = 0xffff00000038d000, //__heap_start,
-        .addr = 0xffff00000F38d000, //__heap_start + LOADS,
+        .addr = 0xffff000002000000, //32MiB
         .allocator = Allocator{
             .allocFn = BumpAllocator.alloc,
             .resizeFn = BumpAllocator.resize,
