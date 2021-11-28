@@ -22,6 +22,7 @@ const page = @import("vm/page.zig");
 // Verifies that the adjusted length will still map to the full length
 const vm = @import("vm.zig");
 const kernel_elf = @import("kernel_elf.zig");
+const ext2 = @import("ext2");
 
 export fn kmain() noreturn {
     arch_init.init();
@@ -67,6 +68,29 @@ fn kmainInit() noreturn {
 
     // kprint.write("Swotcj\r", .{});
     // thread.switch_to(alt_thread);
+
+    const va_base = 0xFFFF000000000000;
+    const img_address = 0x2000000 + va_base;
+    const img_size = 0x040000;
+
+    const img_start_ptr = @intToPtr([*]u8, img_address);
+    const img_slice = img_start_ptr[0..img_size];
+
+    var img_stream = std.io.fixedBufferStream(img_slice);
+
+    var fs = ext2.FS.mount(&img_stream) catch unreachable;
+    var super_block = fs.superblock(&img_stream) catch unreachable;
+
+    kprint.write("FS Info:\r", .{});
+    kprint.write("\tMagic                  0x{X}\r", .{super_block.s_magic});
+    kprint.write("\tNumber of block groups {}\r", .{super_block.block_group_count()});
+    kprint.write("\tBlock size             {}\r", .{super_block.block_size()});
+
+    kprint.write("\ts_blocks_count         {}\r", .{super_block.s_blocks_count});
+    kprint.write("\ts_first_data_block     {}\r", .{super_block.s_first_data_block});
+    kprint.write("\ts_blocks_per_group     {}\r", .{super_block.s_blocks_per_group});
+
+    exit();
 
     while (true) {
         // kprint.write("INIT\r", .{});
