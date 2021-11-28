@@ -1,5 +1,8 @@
 # jimzos
 
+Ext2 FS:
+- GOAL: `tree` all test disk images
+
 Cleanup
 - Prekernel: Load kernel elf, enable MMU, jump to kernel main
 - Move StackFrame and hardware dependent context switching into aarch
