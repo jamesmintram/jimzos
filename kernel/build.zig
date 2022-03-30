@@ -71,7 +71,7 @@ pub fn build(b: *Builder) void {
     const dump_step = b.step("dump", "Dump symbols");
     dump_step.dependOn(&exe.step);
 
-    const run_objdump = b.addSystemCommand(&[_][]const u8{"llvm-objcopy"});
+    const run_objdump = b.addSystemCommand(&[_][]const u8{"llvm-objcopy-13"});
     run_objdump.addArtifactArg(exe);
     run_objdump.addArgs(&[_][]const u8{ "-O", "binary", "zig-out/bin/kernel8" });
 
@@ -89,7 +89,7 @@ pub fn build(b: *Builder) void {
     run_qemu.addArtifactArg(exe);
     run_qemu.addArgs(&[_][]const u8{
         "-m",         "1024",
-        "-M",         "raspi3b",
+        "-M",         "raspi3",
         "-nographic", "-semihosting",
     });
     if (want_gdb) {
