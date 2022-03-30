@@ -12,52 +12,71 @@ fn alignPageAllocLen(full_len: usize, len: usize, len_align: u29) usize {
     return aligned_len;
 }
 
-pub const BumpAllocator = struct {
-    const Self = @This();
+pub fn BumpAllocator() type {
+    return struct {
 
-    addr: usize,
-    allocator: Allocator,
+        addr: usize,
 
-    pub fn alloc(allocator: *Allocator, n: usize, alignment: u29, len_align: u29, ra: usize) error{OutOfMemory}![]u8 {
-        _ = ra;
-        _ = alignment;
+        const Self = @This();
 
-        assert(n > 0);
-        const aligned_len = mem.alignForward(n, mem.page_size);
-        const self = @fieldParentPtr(Self, "allocator", allocator);
+        pub fn init() Self {
+            return Self{
+                .addr = 0xffff000002000000
+            };
+        }
 
-        var return_address = self.addr;
-        self.addr += aligned_len;
+        pub fn allocator(self: *Self) Allocator {
+            return Allocator.init(self, alloc, resize, free);
+        }
 
-        const return_ptr = @ptrCast([*]u8,@intToPtr(*u8, return_address));
-        return return_ptr[0..alignPageAllocLen(aligned_len, n, len_align)];
-    }
+        fn alloc(
+            self: *Self,
+            n: usize,
+            ptr_align: u29,
+            len_align: u29,
+            ra: usize,
+        ) error{OutOfMemory}![]u8 {
+            _ = ra;
+            _ = ptr_align;
 
-    pub fn resize(
-        allocator: *Allocator,
-        buf_unaligned: []u8,
-        buf_align: u29,
-        new_size: usize,
-        len_align: u29,
-        return_address: usize,
-    ) Allocator.Error!usize {
-        _ = allocator;
-        _ = buf_unaligned;
-        _ = buf_align;
-        _ = new_size;
-        _ = len_align;
-        _ = return_address;
+            assert(n > 0);
+            const aligned_len = mem.alignForward(n, mem.page_size);
+    
+            var alloc_addr = self.addr;
+            self.addr += aligned_len;
 
-        return error.OutOfMemory;
-    }
-};
+            const return_ptr = @ptrCast([*]u8,@intToPtr(*u8, alloc_addr));
+            return return_ptr[0..alignPageAllocLen(aligned_len, n, len_align)];   
+        }
 
-pub fn create() BumpAllocator {
-    return BumpAllocator{
-        .addr = 0xffff000002000000, //32MiB
-        .allocator = Allocator{
-            .allocFn = BumpAllocator.alloc,
-            .resizeFn = BumpAllocator.resize,
-        },
+        fn resize(
+            self: *Self,
+            buf_unaligned: []u8,
+            buf_align: u29,
+            new_len: usize,
+            len_align: u29,
+            return_address: usize,
+        ) ?usize {
+            _ = self;
+            _ = buf_unaligned;
+            _ = buf_align;
+            _ = new_len;
+            _ = len_align;
+            _ = return_address;
+
+            return null;
+        }
+
+        fn free(
+            self: *Self,
+            buf: []u8,
+            buf_align: u29,
+            ra: usize,
+        ) void {
+            _ = self;
+            _ = buf;
+            _ = buf_align;
+            _ = ra;   
+        }
     };
 }

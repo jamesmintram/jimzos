@@ -6,7 +6,7 @@ const kernel_elf = @import("kernel_elf.zig");
 
 var kernel_panic_allocator_bytes: [5 * 1024 * 1024]u8 = undefined;
 var kernel_panic_allocator_state = std.heap.FixedBufferAllocator.init(kernel_panic_allocator_bytes[0..]);
-const kernel_panic_allocator = &kernel_panic_allocator_state.allocator;
+const kernel_panic_allocator = kernel_panic_allocator_state.allocator();
 
 fn dumpStackTrace(dwarf_info: *std.dwarf.DwarfInfo, stack_trace: *builtin.StackTrace) !void {
     try std.dwarf.openDwarfDebugInfo(dwarf_info, kernel_panic_allocator);
@@ -94,6 +94,7 @@ fn extractDwarfInfo(kernel: *kernel_elf.KernelElf) !std.dwarf.DwarfInfo {
         .debug_str = debug_str,
         .debug_line = debug_line,
         .debug_ranges = debug_ranges,
+        .debug_line_str = null,
     };
 }
 
@@ -133,7 +134,7 @@ pub fn printGuru(msg: []const u8) void {
     kprint.write("\r", .{});
 }
 
-pub fn printAddress(address:u64) !void {
+pub fn printAddress(address:u64) !void {   
     var debug_info = try extractDwarfInfo(kernel_elf.get());
     try std.dwarf.openDwarfDebugInfo(&debug_info, kernel_panic_allocator);
 

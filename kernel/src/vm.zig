@@ -1,5 +1,5 @@
 const page_frame_manager = @import("vm/page_frame_manager.zig");
-const BumpAllocator = page_frame_manager.BumpAllocator;
+const BumpAllocator = page_frame_manager.BumpAllocator();
 
 var page_allocator: BumpAllocator = undefined;
 
@@ -11,5 +11,5 @@ pub fn get_page_frame_manager() BumpAllocator {
 
 pub fn init() void {
     //init page frame manager
-    page_allocator = page_frame_manager.create();
+    page_allocator = BumpAllocator.init();
 }
