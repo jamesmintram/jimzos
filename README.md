@@ -10,6 +10,23 @@ Ext2 FS:
 Cleanup
 - Prekernel: Load kernel elf, enable MMU, jump to kernel main
 - Move StackFrame and hardware dependent context switching into aarch
+ELF loading
+
+- Can we use a linker symbol as a proxy for kernel elf size?
+
+
+Need a panic fn
+
+https://dwarfstd.org/doc/Debugging%20using%20DWARF-2012.pdf
+
+https://eli.thegreenplace.net/2011/02/07/how-debuggers-work-part-3-debugging-information
+
+Move StackFrame and hardware dependent context switching into aarch
+Single threaded spinlock
+- Build an auto-release mechanism?
+- Detect context switch when spinlock held (panic)
+- Recursive spinlock? (Counter?)
+- Save, Disable + Restore interrupts
 
 Proper init of the Kernel Allocator
 How is the Kernel Allocator used? Globally accessible? USE A BIG KERNEL LOCK!
