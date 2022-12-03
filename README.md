@@ -1,5 +1,11 @@
 # jimzos
 
+## build and run
+
+    zig build qemu -Dgdb=true
+    gdb/gdb.sh
+
+
 Ext2 FS:
 - GOAL: `tree` all test disk images
 -- Add support for outputting to something formattable? "{}", .{inode}
