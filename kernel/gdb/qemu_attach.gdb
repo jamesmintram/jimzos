@@ -1,7 +1,7 @@
 set debug aarch64
 
 target remote localhost:1234
-file zig-cache/bin/kernel8.elf
+file zig-out/bin/kernel8.elf
 
 set scheduler-locking on
 

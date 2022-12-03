@@ -25,7 +25,7 @@ fn dumpStackTrace(dwarf_info: *std.dwarf.DwarfInfo, stack_trace: *builtin.StackT
             continue;
         };
 
-        if (dwarf_info.getLineNumberInfo(compile_unit.*, return_address)) |line_info| {
+        if (dwarf_info.getLineNumberInfo(kernel_panic_allocator, compile_unit.*, return_address)) |line_info| {
             kprint.write("{: >3} {x:0>16} {s}:{}:{}\r", .{
                 frames_left,
                 return_address,
@@ -95,6 +95,12 @@ fn extractDwarfInfo(kernel: *kernel_elf.KernelElf) !std.dwarf.DwarfInfo {
         .debug_line = debug_line,
         .debug_ranges = debug_ranges,
         .debug_line_str = null,
+        .debug_loclists = null,
+        .debug_rnglists = null,
+        .debug_addr = null,
+        .debug_names = null,
+        .debug_frame = null,
+        .debug_str_offsets = null,
     };
 }
 
@@ -103,8 +109,6 @@ var already_panicking: bool = false;
 extern fn exit() noreturn;
 
 pub fn handlePanic(msg: []const u8, error_return_trace: ?*builtin.StackTrace) noreturn {
-    _ = error_return_trace;
-
     if (already_panicking) {
         kprint.write("Double panic\r", .{});
         while (true) {}
@@ -143,7 +147,7 @@ pub fn printAddress(address:u64) !void {
         return;
     };
 
-    if (debug_info.getLineNumberInfo(compile_unit.*, address)) |line_info| {
+    if (debug_info.getLineNumberInfo(kernel_panic_allocator, compile_unit.*, address)) |line_info| {
         kprint.write("0x{x:0>16} {s}:{}:{}\r", .{
             address,
             line_info.file_name,

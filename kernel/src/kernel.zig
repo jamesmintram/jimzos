@@ -111,7 +111,9 @@ fn kmainAlt() noreturn {
     }
 }
 
-pub fn panic(msg: []const u8, error_return_trace: ?*builtin.StackTrace) noreturn {
+pub fn panic(msg: []const u8, error_return_trace: ?*builtin.StackTrace, size: ?usize) noreturn {
+    _ = size;
+
     @import("panic.zig").handlePanic(msg, error_return_trace);
 }
 

@@ -55,8 +55,8 @@ pub fn build(b: *Builder) void {
     // Use eabihf for freestanding arm code with hardware float support
 
     var features_sub = std.Target.Cpu.Feature.Set.empty;
-    features_sub.addFeature(@enumToInt(std.Target.aarch64.Feature.neon));
-    features_sub.addFeature(@enumToInt(std.Target.aarch64.Feature.fp_armv8));
+    //features_sub.addFeature(@enumToInt(std.Target.aarch64.Feature.neon));
+    //features_sub.addFeature(@enumToInt(std.Target.aarch64.Feature.fp_armv8));
 
     const target = std.zig.CrossTarget{
         .cpu_arch = .aarch64,
@@ -71,7 +71,7 @@ pub fn build(b: *Builder) void {
     const dump_step = b.step("dump", "Dump symbols");
     dump_step.dependOn(&exe.step);
 
-    const run_objdump = b.addSystemCommand(&[_][]const u8{"llvm-objcopy-13"});
+    const run_objdump = b.addSystemCommand(&[_][]const u8{"llvm-objcopy13"});
     run_objdump.addArtifactArg(exe);
     run_objdump.addArgs(&[_][]const u8{ "-O", "binary", "zig-out/bin/kernel8" });
 

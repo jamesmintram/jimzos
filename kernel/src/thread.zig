@@ -3,13 +3,13 @@ const process = @import("proc.zig");
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-pub const CPUFrame = packed struct {
-    tf_sp: u64, //0
-    tf_lr: u64, //8
-    tf_elr: u64, //16
-    tf_spsr: u32, //24
-    tf_esr: u32, //28
-    tf_x: [30]u64, //32
+pub const CPUFrame = extern struct {
+    tf_sp: u64 align(1), //0
+    tf_lr: u64 align(1), //8
+    tf_elr: u64 align(1), //16
+    tf_spsr: u32 align(1), //24
+    tf_esr: u32 align(1), //28
+    tf_x: [30]u64 align(1), //32
 };
 
 pub const Thread = struct {
@@ -48,7 +48,7 @@ fn add_to_thread_list(new_thread: *Thread) void {
     thread_list = new_thread;
 }
 
-pub fn create_initial_thread(allocator: *Allocator, thread_fn: fn () void) !*Thread {
+pub fn create_initial_thread(allocator: *Allocator, thread_fn: *const fn () void) !*Thread {
     var kernel_proc = process.createProcess(allocator) catch unreachable;
 
     var newThread = try allocator.create(Thread);
