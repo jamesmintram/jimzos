@@ -34,7 +34,8 @@ export fn kmain() noreturn {
     //test_crashes();
 
     // Get inside a thread context ASAP
-    var init_thread = thread.create_initial_thread(&vm.get_page_frame_manager().allocator(), kmainInit) catch unreachable;
+    var allocator = vm.get_page_frame_manager().allocator();
+    var init_thread = thread.create_initial_thread(&allocator, kmainInit) catch unreachable;
     thread.switch_to_initial(init_thread);
 
     kprint.write("End of kmain\r", .{});

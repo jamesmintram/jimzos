@@ -6,77 +6,77 @@ const assert = @import("std").debug.assert;
 extern const __heap_start: usize;
 extern const __heap_phys_start: *usize;
 
-fn alignPageAllocLen(full_len: usize, len: usize, len_align: u29) usize {
-    const aligned_len = mem.alignAllocLen(full_len, len, len_align);
-    assert(mem.alignForward(aligned_len, mem.page_size) == full_len);
-    return aligned_len;
-}
+pub const BumpAllocator = struct {
+    addr: usize,
 
-pub fn BumpAllocator() type {
-    return struct {
+    const Self = @This();
 
-        addr: usize,
+    pub fn init() Self {
+        return Self{ .addr = 0xffff000002000000 };
+    }
 
-        const Self = @This();
+    pub fn allocator(self: *BumpAllocator) Allocator {
+        return .{
+            .ptr = self,
+            .vtable = &.{
+                .alloc = alloc,
+                .resize = resize,
+                .free = free,
+            },
+        };
+    }
 
-        pub fn init() Self {
-            return Self{
-                .addr = 0xffff000002000000
-            };
-        }
+    pub fn alloc(
+        ctx: *anyopaque,
+        n: usize,
+        log2_ptr_align: u8,
+        ret_addr: usize,
+    ) ?[*]u8 {
+        const self = @ptrCast(*Self, @alignCast(@alignOf(Self), ctx));
 
-        pub fn allocator(self: *Self) Allocator {
-            return Allocator.init(self, alloc, resize, free);
-        }
+        _ = ret_addr;
+        _ = log2_ptr_align;
 
-        fn alloc(
-            self: *Self,
-            n: usize,
-            ptr_align: u29,
-            len_align: u29,
-            ra: usize,
-        ) error{OutOfMemory}![]u8 {
-            _ = ra;
-            _ = ptr_align;
+        assert(n > 0);
+        const aligned_len = mem.alignForward(n, mem.page_size);
 
-            assert(n > 0);
-            const aligned_len = mem.alignForward(n, mem.page_size);
-    
-            var alloc_addr = self.addr;
-            self.addr += aligned_len;
+        // Take a copy of our current address before we bump it
+        var alloc_addr = self.addr;
+        self.addr += aligned_len;
 
-            const return_ptr = @ptrCast([*]u8,@intToPtr(*u8, alloc_addr));
-            return return_ptr[0..alignPageAllocLen(aligned_len, n, len_align)];   
-        }
+        const return_ptr = @ptrCast([*]u8, @intToPtr(*u8, alloc_addr));
+        return return_ptr;
+    }
 
-        fn resize(
-            self: *Self,
-            buf_unaligned: []u8,
-            buf_align: u29,
-            new_len: usize,
-            len_align: u29,
-            return_address: usize,
-        ) ?usize {
-            _ = self;
-            _ = buf_unaligned;
-            _ = buf_align;
-            _ = new_len;
-            _ = len_align;
-            _ = return_address;
+    pub fn resize(
+        ctx: *anyopaque,
+        buf: []u8,
+        log2_buf_align: u8,
+        new_len: usize,
+        ret_addr: usize,
+    ) bool {
+        const self = @ptrCast(*Self, @alignCast(@alignOf(Self), ctx));
 
-            return null;
-        }
+        _ = self;
+        _ = buf;
+        _ = log2_buf_align;
+        _ = new_len;
+        _ = ret_addr;
 
-        fn free(
-            self: *Self,
-            buf: []u8,
-            buf_align: u29,
-            ra: usize,
-        ) void {
-            _ = self;
-            _ = buf;
-            _ = buf_align;
-            _ = ra;   
-        }
-    };
-}
+        return false;
+    }
+
+    pub fn free(
+        ctx: *anyopaque,
+        buf: []u8,
+        log2_buf_align: u8,
+        ret_addr: usize,
+    ) void {
+        const self = @ptrCast(*Self, @alignCast(@alignOf(Self), ctx));
+
+        _ = self;
+        _ = buf;
+        _ = log2_buf_align;
+        _ = ret_addr;
+    }
+};
