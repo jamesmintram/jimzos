@@ -1,5 +1,6 @@
 const regs = @import("types/regs.zig");
 const processor = @import("processor.zig");
+const asm64 = @import("asm.zig");
 
 extern const __page_tables_phys_start: [*]usize;
 extern const __page_tables_size: usize;
@@ -9,7 +10,7 @@ fn build_identity_map() void {}
 fn activate_mmu() void {
     var mair = regs.MAIR_EL1{
         .Attr0 = 0xFF,
-        .Attr1 = 0b00000100,
+        .Attr1 = 0x04,
     };
     regs.MAIR_EL1.write(mair);
 
@@ -42,8 +43,47 @@ fn activate_mmu() void {
     processor.processor.flush();
 }
 
-fn drop_to_el2() void {}
-fn drop_to_el1() void {}
+fn drop_to_el2() void {
+    var scr_el3 = regs.SCR_EL3{
+        .ST = 1, //  Don't trap access to Counter-timer Physical Secure registers
+        .RW = 1, //  Lower level to use Aarch64
+        .NS = 1, //  Non-secure state
+        .HCE = 1, // Enable Hypervisor instructions at all levels
+    };
+    regs.SCR_EL3.write(scr_el3);
+
+    var spsr_el3 = regs.SPSR_EL3{
+        .A = 1, //
+        .I = 1, //
+        .F = 1, //
+        .D = 1, //
+
+        .M = regs.SPSR_EL3.Mode.EL2t,
+    };
+    regs.SPSR_EL3.write(spsr_el3);
+
+    asm64.enter_el2_from_el3();
+}
+
+fn drop_to_el1() void {
+    var hcr_el2 = regs.HCR_EL2{
+        .RW = 1, //
+    };
+    regs.HCR_EL2.write(hcr_el2);
+
+    // Set up initial exception stack
+    regs.SP_EL1.write(0x40000);
+
+    var spsr_el2 = regs.SPSR_EL2{
+        .A = 1, //
+        .I = 1, //
+        .F = 1, //
+        .M = regs.SPSR_EL2.Mode.EL1t, //
+    };
+    regs.SPSR_EL2.write(spsr_el2);
+
+    asm64.enter_el1_from_el2();
+}
 
 fn drop_to_initial_el1() void {
     switch (regs.ExceptionLevel.read()) {
@@ -66,62 +106,15 @@ fn drop_to_initial_el1() void {
 export fn preboot() linksection(".text.boot") callconv(.C) void {
     @setRuntimeSafety(false);
 
-    drop_to_initial_el1();
-
     // TODO: Ensure Stack pointer is configured BEFORE enterting here
 
-    // Drop to EL3
+    drop_to_initial_el1();
 
-    // scr_el3
-    //  Disable MMU
-    //  Disable Set Aarch64
-    //  Set non secure state
-    // MSR scr_el3
-
-    // spsr_el3
-    //  Use EL2's dedicated stack
-    //  Configure drop to EL2
-    //  Mask FIQ
-    //  Mask IRQ
-    //  Mask SError
-    //  Mask Watchpoint, Breakpoint and Software
-    // MSR spsr_el3
-
-    // Drop to EL2
-
-    // Drop to EL1
-
-    //preboot_memset(__page_tables_phys_start, 0, __page_tables_size);
-
-    // var d = __page_tables_phys_start;
-    // comptime const count: usize =
-    //     (__page_tables_size / @sizeOf(usize));
-    // var n: usize = 0;
-
-    var reg = regs.SCR_EL3{ .IRQ = 1, .FIQ = 1 };
-
-    __page_tables_phys_start[0] = reg.toBits();
-
+    //
     // build_identity_map(allocator, root_table);
-    // setup_quickmap_page_table(allocator, root_table);
-    // setup_kernel_page_directory(root_table);
-
     // switch_to_page_table(page_tables_phys_start);
 
+    //__page_tables_phys_start[0] = reg.toBits();
+
     activate_mmu();
-
-    // Run tests on file save (on file just saved)
-
-    // while (n < count) {
-    //     __page_tables_phys_start[n] = 0; //__page_tables_phys_start[0] + 1;
-    //     n += 1;
-    //     //     d[0] = 0;
-    //     //     d += 1;
-    //     //     // n -= 1;
-    //     //     // if (n == 0) break;
-    //     //     // d += 1;
-    // }
-
-    // Setup identity map
-    //
 }

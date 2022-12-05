@@ -57,6 +57,23 @@ pub const SCR_EL3 = packed struct(usize) {
     pub inline fn fromBits(bits: usize) SCR_EL3 {
         return @bitCast(Self, bits);
     }
+
+    pub inline fn read() Self {
+        var register: usize = 0;
+
+        asm ("mrs %[value], scr_el3"
+            : [value] "=r" (register),
+        );
+
+        return Self.fromBits(register);
+    }
+
+    pub inline fn write(self: Self) void {
+        asm volatile ("msr scr_el3, %[value]"
+            :
+            : [value] "r" (Self.toBits(self)),
+        );
+    }
 };
 test "empty SCR_EL3 to bits" {
     var reg = SCR_EL3{};
@@ -66,7 +83,7 @@ test "empty SCR_EL3 to bits" {
 // https://developer.arm.com/documentation/ddi0595/2021-06/AArch64-Registers/SPSR-EL3--Saved-Program-Status-Register--EL3-
 // Saved Program Status Register
 pub const SPSR_EL3 = packed struct(usize) {
-    const Mode = enum(u4) {
+    pub const Mode = enum(u4) {
         EL0t = 0b0000, //
         EL1t = 0b0100, //
         EL1h = 0b0101, //
@@ -102,6 +119,23 @@ pub const SPSR_EL3 = packed struct(usize) {
 
     pub inline fn fromBits(bits: usize) SPSR_EL3 {
         return @bitCast(Self, bits);
+    }
+
+    pub inline fn read() Self {
+        var register: usize = 0;
+
+        asm ("mrs %[value], spsr_el3"
+            : [value] "=r" (register),
+        );
+
+        return Self.fromBits(register);
+    }
+
+    pub inline fn write(self: Self) void {
+        asm volatile ("msr spsr_el3, %[value]"
+            :
+            : [value] "r" (Self.toBits(self)),
+        );
     }
 };
 test "empty SPSR_EL3 to bits" {
@@ -171,6 +205,23 @@ pub const HCR_EL2 = packed struct(usize) {
     pub inline fn fromBits(bits: usize) HCR_EL2 {
         return @bitCast(Self, bits);
     }
+
+    pub inline fn read() Self {
+        var register: usize = 0;
+
+        asm ("mrs %[value], hcr_el2"
+            : [value] "=r" (register),
+        );
+
+        return Self.fromBits(register);
+    }
+
+    pub inline fn write(self: Self) void {
+        asm volatile ("msr hcr_el2, %[value]"
+            :
+            : [value] "r" (Self.toBits(self)),
+        );
+    }
 };
 test "empty HCR_EL2 to bits" {
     var reg = HCR_EL2{};
@@ -180,7 +231,7 @@ test "empty HCR_EL2 to bits" {
 // https://developer.arm.com/documentation/ddi0601/2020-12/AArch64-Registers/SPSR-EL2--Saved-Program-Status-Register--EL2-
 // Saved Program Status Register
 pub const SPSR_EL2 = packed struct(usize) {
-    const Mode = enum(u4) {
+    pub const Mode = enum(u4) {
         EL0t = 0b0000, //
         EL1t = 0b0100, //
         EL1h = 0b0101, //
@@ -218,6 +269,23 @@ pub const SPSR_EL2 = packed struct(usize) {
 
     pub inline fn fromBits(bits: usize) SPSR_EL2 {
         return @bitCast(Self, bits);
+    }
+
+    pub inline fn read() Self {
+        var register: usize = 0;
+
+        asm ("mrs %[value], spsr_el2"
+            : [value] "=r" (register),
+        );
+
+        return Self.fromBits(register);
+    }
+
+    pub inline fn write(self: Self) void {
+        asm volatile ("msr spsr_el2, %[value]"
+            :
+            : [value] "r" (Self.toBits(self)),
+        );
     }
 };
 test "empty SPSR_EL2 to bits" {
@@ -631,6 +699,15 @@ pub const ExceptionLevel = enum(u8) {
 
         current_exception_level = (current_exception_level >> 2) & 0x3;
         return @intToEnum(ExceptionLevel, current_exception_level);
+    }
+};
+
+pub const SP_EL1 = struct {
+    pub inline fn write(sp_el1: usize) void {
+        asm volatile ("msr sp_el1, %[value]"
+            :
+            : [value] "r" (sp_el1),
+        );
     }
 };
 
