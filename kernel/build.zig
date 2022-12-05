@@ -40,6 +40,8 @@ pub fn build(b: *Builder) void {
 
     const mode = b.standardReleaseOptions();
 
+    const lib_preboot = b.addStaticLibrary("preboot", "src/arch/aarch64/preboot.zig");
+
     const exe = b.addExecutable("kernel8.elf", "src/kernel.zig");
 
     exe.addPackagePath("ext2", "../libs/ext2/ext2.zig");
@@ -51,6 +53,7 @@ pub fn build(b: *Builder) void {
     exe.addAssemblyFile("src/arch/aarch64/context.S");
     exe.setBuildMode(mode);
 
+    exe.linkLibrary(lib_preboot);
     exe.setLinkerScriptPath(FileSource.relative("src/arch/aarch64/linker.ld"));
     // Use eabihf for freestanding arm code with hardware float support
 
@@ -66,6 +69,7 @@ pub fn build(b: *Builder) void {
     };
 
     exe.setTarget(target);
+    lib_preboot.setTarget(target);
 
     // Dumping symbols
     const dump_step = b.step("dump", "Dump symbols");

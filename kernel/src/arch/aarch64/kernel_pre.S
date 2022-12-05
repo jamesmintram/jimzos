@@ -26,6 +26,9 @@ __start_master:
 //  b __post_jtag
 
 
+b preboot
+
+
 //--------------------------------------------------------
 // Drop down to EL1
 
