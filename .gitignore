@@ -2,3 +2,4 @@
 workspace/
 zig-cache/
 zig-out/
+*.core
