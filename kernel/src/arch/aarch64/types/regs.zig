@@ -234,18 +234,18 @@ test "empty SPSR_EL2 to bits" {
 // https://developer.arm.com/documentation/ddi0595/2021-06/AArch64-Registers/TCR-EL1--Translation-Control-Register--EL1-
 // Translation Control Register
 pub const TCR_EL1 = packed struct(usize) {
-    const Shareability = enum(u2) {
+    pub const Shareability = enum(u2) {
         NonSharable = 0b00,
         OuterShareable = 0b10,
         InnerShareable = 0b11,
     };
-    const OuterCacheability = enum(u2) {
+    pub const OuterCacheability = enum(u2) {
         NormalMemory_Outer_NonCacheable = 0b00,
         NormalMemory_Outer_WriteBack_ReadAllocate_WriteAllocateCacheable = 0b01,
         NormalMemory_Outer_WriteThrough_ReadAllocate_NoWriteAllocateCacheable = 0b10,
         NormalMemory_Outer_WriteBack_ReadAllocate_NoWriteAllocateCacheable = 0b11,
     };
-    const InnerCacheability = enum(u2) {
+    pub const InnerCacheability = enum(u2) {
         NormalMemory_Inner_NonCacheable = 0b00,
         NormalMemory_Inner_WriteBack_ReadAllocate_WriteAllocateCacheable = 0b01,
         NormalMemory_Inner_WriteThrough_ReadAllocate_NoWriteAllocateCacheable = 0b10,
@@ -260,13 +260,13 @@ pub const TCR_EL1 = packed struct(usize) {
     //
     // (https://stackoverflow.com/a/34269498)
 
-    const TG1GranuleSize = enum(u2) {
+    pub const TG1GranuleSize = enum(u2) {
         Size_16KB = 0b01,
         Size_4KB = 0b10,
         Size_64KB = 0b11,
     };
 
-    const TG0GranuleSize = enum(u2) {
+    pub const TG0GranuleSize = enum(u2) {
         Size_4KB = 0b00,
         Size_64KB = 0b01,
         Size_16KB = 0b10,
@@ -286,7 +286,7 @@ pub const TCR_EL1 = packed struct(usize) {
     IRGN1: InnerCacheability = InnerCacheability.NormalMemory_Inner_NonCacheable,
     ORGN1: OuterCacheability = OuterCacheability.NormalMemory_Outer_NonCacheable,
     SH1: Shareability = Shareability.NonSharable,
-    TG1: TG0GranuleSize = TG0GranuleSize.Size_4KB,
+    TG1: TG1GranuleSize = TG1GranuleSize.Size_4KB,
 
     IPS: u3 = 0,
     RES0_1: u1 = 0,
@@ -326,6 +326,23 @@ pub const TCR_EL1 = packed struct(usize) {
 
     pub inline fn fromBits(bits: usize) TCR_EL1 {
         return @bitCast(Self, bits);
+    }
+
+    pub inline fn read() Self {
+        var register: usize = 0;
+
+        asm ("mrs %[value], tcr_el1"
+            : [value] "=r" (register),
+        );
+
+        return Self.fromBits(register);
+    }
+
+    pub inline fn write(self: Self) void {
+        asm volatile ("msr tcr_el1, %[value]"
+            :
+            : [value] "r" (Self.toBits(self)),
+        );
     }
 };
 test "empty TCR_EL1 to bits" {
@@ -394,6 +411,23 @@ pub const SCTLR_EL1 = packed struct(usize) {
     pub inline fn fromBits(bits: usize) SCTLR_EL1 {
         return @bitCast(Self, bits);
     }
+
+    pub inline fn read() Self {
+        var register: usize = 0;
+
+        asm ("mrs %[value], sctlr_el1"
+            : [value] "=r" (register),
+        );
+
+        return Self.fromBits(register);
+    }
+
+    pub inline fn write(self: Self) void {
+        asm volatile ("msr sctlr_el1, %[value]"
+            :
+            : [value] "r" (Self.toBits(self)),
+        );
+    }
 };
 test "empty SCTLR_EL1 to bits" {
     var reg = SCTLR_EL1{};
@@ -403,7 +437,8 @@ test "empty SCTLR_EL1 to bits" {
 // https://developer.arm.com/documentation/ddi0595/2021-06/AArch64-Registers/ID-AA64MMFR0-EL1--AArch64-Memory-Model-Feature-Register-0
 // Memory Model Feature Register 0
 pub const ID_AA64MMFR0_EL1 = packed struct(usize) {
-    PARange: u4 = 0,
+    PARangeLo: u2 = 0,
+    PARangeHi: u2 = 0,
     ASIDBits: u4 = 0,
     BigEnd: u4 = 0,
     SNSMem: u4 = 0,
@@ -424,8 +459,18 @@ pub const ID_AA64MMFR0_EL1 = packed struct(usize) {
         return @bitCast(usize, self);
     }
 
-    pub inline fn fromBits(bits: usize) ID_AA64MMFR0_EL1 {
+    pub inline fn fromBits(bits: usize) Self {
         return @bitCast(Self, bits);
+    }
+
+    pub inline fn read() Self {
+        var register: usize = 0;
+
+        asm ("mrs %[value], ID_AA64MMFR0_EL1"
+            : [value] "=r" (register),
+        );
+
+        return Self.fromBits(register);
     }
 };
 test "empty ID_AA64MMFR0_EL1 to bits" {
@@ -454,6 +499,13 @@ pub const MAIR_EL1 = packed struct(usize) {
 
     pub inline fn fromBits(bits: usize) MAIR_EL1 {
         return @bitCast(Self, bits);
+    }
+
+    pub inline fn write(self: Self) void {
+        asm volatile ("msr mair_el1, %[value]"
+            :
+            : [value] "r" (Self.toBits(self)),
+        );
     }
 };
 test "empty MAIR_EL1 to bits" {
@@ -564,5 +616,30 @@ test "empty DAIF to bits" {
     try expect(0x00000000 == reg.toBits());
 }
 
+pub const ExceptionLevel = enum(u8) {
+    EL0 = 0,
+    EL1 = 1,
+    EL2 = 2,
+    EL3 = 3,
+
+    pub inline fn read() ExceptionLevel {
+        var current_exception_level: usize = 0;
+
+        asm ("mrs  %[value], CurrentEL"
+            : [value] "=r" (current_exception_level),
+        );
+
+        current_exception_level = (current_exception_level >> 2) & 0x3;
+        return @intToEnum(ExceptionLevel, current_exception_level);
+    }
+};
+
 const std = @import("std");
 const expect = std.testing.expect;
+
+// TODO: Where should this live?
+pub const Register = union(enum) {
+    ReadOnly: u32,
+    WriteOnly: u32,
+    ReadWrite: u32,
+};
