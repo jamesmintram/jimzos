@@ -4,7 +4,7 @@ pub inline fn enter_el2_from_el3() void {
         \\    msr elr_el3, x0
         \\    eret
         \\ entered_el2:
-        ::: "x0");
+        ::: .{ .x0 = true });
 }
 
 pub inline fn enter_el1_from_el2() void {
@@ -13,5 +13,5 @@ pub inline fn enter_el1_from_el2() void {
         \\    msr elr_el2, x0
         \\    eret
         \\ entered_el1:
-        ::: "x0");
+        ::: .{ .x0 = true });
 }

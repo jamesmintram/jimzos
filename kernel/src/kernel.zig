@@ -23,6 +23,7 @@ const page = @import("vm/page.zig");
 const vm = @import("vm.zig");
 const kernel_elf = @import("kernel_elf.zig");
 const ext2 = @import("ext2");
+const buffer_stream = @import("buffer_stream.zig");
 
 export fn kmain() noreturn {
     arch_init.init();
@@ -35,7 +36,7 @@ export fn kmain() noreturn {
 
     // Get inside a thread context ASAP
     var allocator = vm.get_page_frame_manager().allocator();
-    var init_thread = thread.create_initial_thread(&allocator, kmainInit) catch unreachable;
+    const init_thread = thread.create_initial_thread(&allocator, kmainInit) catch unreachable;
     thread.switch_to_initial(init_thread);
 
     kprint.write("End of kmain\r", .{});
@@ -62,7 +63,7 @@ fn kmainInit() noreturn {
     const page_count = available_memory / 4096; // page_size = 4096
 
     kprint.write("Pages\r", .{});
-    page.add_phys_pages(@intToPtr(*page.Page, memory_start), memory_start, page_count);
+    page.add_phys_pages(@ptrFromInt(memory_start), memory_start, page_count);
     // // page.dump(uart);
 
     // kprint.write("Create init thread\r", .{});
@@ -75,13 +76,13 @@ fn kmainInit() noreturn {
     const img_address = 0x2000000 + va_base;
     const img_size = 0x040000;
 
-    const img_start_ptr = @intToPtr([*]u8, img_address);
+    const img_start_ptr: [*]u8 = @ptrFromInt(img_address);
     const img_slice = img_start_ptr[0..img_size];
 
-    var img_stream = std.io.fixedBufferStream(img_slice);
+    var img_stream = buffer_stream.BufferStream.init(img_slice);
 
-    var fs = ext2.FS.mount(&img_stream) catch unreachable;
-    var super_block = fs.superblock(&img_stream) catch unreachable;
+    const fs = ext2.FS.mount(&img_stream) catch unreachable;
+    const super_block = fs.superblock(&img_stream) catch unreachable;
 
     kprint.write("FS Info:\r", .{});
     kprint.write("\tMagic                  0x{X}\r", .{super_block.s_magic});

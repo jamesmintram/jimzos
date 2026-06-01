@@ -1,25 +1,26 @@
 const std = @import("std");
+const BufferStream = @import("buffer_stream.zig").BufferStream;
 
 pub const KernelElf = struct {
-    stream: std.io.FixedBufferStream([]u8),
+    stream: BufferStream,
     header: std.elf.Header,
-    data: [*]u8,
+    data: []u8,
 
     fn load() !KernelElf {
         const va_base = 0xFFFF000000000000;
         const elf_address = 0x1000000 + va_base;
         const elf_size = 0x100000; //Fixme 4MB fixed size is hacky
 
-        const elf_start_ptr = @intToPtr([*]u8, elf_address);
+        const elf_start_ptr: [*]u8 = @ptrFromInt(elf_address);
         const elf_slice = elf_start_ptr[0..elf_size];
 
-        var stream = std.io.fixedBufferStream(elf_slice);
-        var header = try std.elf.Header.read(&stream);
+        var stream = BufferStream.init(elf_slice);
+        const header = try std.elf.Header.read(stream.ioReader());
 
         return KernelElf{
             .stream = stream,
             .header = header,
-            .data = elf_start_ptr
+            .data = elf_slice,
         };
     }
 };

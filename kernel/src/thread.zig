@@ -28,7 +28,7 @@ pub const Thread = struct {
 };
 
 pub fn create_default_thread(allocator: *Allocator, parent: *process.Process) !*Thread {
-    var newThread = try allocator.create(Thread);
+    const newThread = try allocator.create(Thread);
 
     newThread.tid = 2;
     newThread.proc = parent;
@@ -49,9 +49,9 @@ fn add_to_thread_list(new_thread: *Thread) void {
 }
 
 pub fn create_initial_thread(allocator: *Allocator, thread_fn: *const fn () void) !*Thread {
-    var kernel_proc = process.createProcess(allocator) catch unreachable;
+    const kernel_proc = process.createProcess(allocator) catch unreachable;
 
-    var newThread = try allocator.create(Thread);
+    const newThread = try allocator.create(Thread);
     newThread.tid = 1;
     newThread.proc = kernel_proc;
 
@@ -59,12 +59,12 @@ pub fn create_initial_thread(allocator: *Allocator, thread_fn: *const fn () void
     newThread.prev = undefined;
 
     // Stack should start from the END of the array
-    newThread.stack_pointer = @ptrToInt(&newThread.kernel_stack[newThread.kernel_stack.len - 1]) - @sizeOf(CPUFrame);
+    newThread.stack_pointer = @intFromPtr(&newThread.kernel_stack[newThread.kernel_stack.len - 1]) - @sizeOf(CPUFrame);
 
-    var frame = @intToPtr(*CPUFrame, newThread.stack_pointer);
+    const frame: *CPUFrame = @ptrFromInt(newThread.stack_pointer);
 
     frame.tf_elr = 0;
-    frame.tf_lr = @ptrToInt(thread_fn);
+    frame.tf_lr = @intFromPtr(thread_fn);
     frame.tf_sp = newThread.stack_pointer;
 
     var spsr: u32 = 0;
@@ -89,20 +89,20 @@ pub fn current_thread() *Thread {
     thread_id = asm volatile ("mrs %[thread_id], tpidr_el1"
         : [thread_id] "=&r" (-> usize),
     );
-    return @intToPtr(*Thread, thread_id);
+    return @ptrFromInt(thread_id);
 }
 
 pub fn yield() void {
     //NAIVE ROUND ROBIN
-    var current = current_thread();
-    var next = current.next orelse thread_list;
+    const current = current_thread();
+    const next = current.next orelse thread_list;
 
     switch_to(next);
 }
 
 extern fn _ctx_switch_to_initial(sp: usize) void;
 pub fn switch_to_initial(thread: *Thread) void {
-    _ctx_switch_to_initial(@ptrToInt(thread));
+    _ctx_switch_to_initial(@intFromPtr(thread));
 }
 
 extern fn _ctx_switch_to(old_thread: usize, new_thread: usize) void;
@@ -112,12 +112,12 @@ pub fn switch_to(thread: *Thread) void {
     // - Update the current ThreadID register value
     // - Restore registers + ERET to same level
 
-    var current = current_thread();
+    const current = current_thread();
 
     //TODO: Check they are not the same, otherwise we just instant return
 
     if (current != thread) {
-        _ctx_switch_to(@ptrToInt(current), @ptrToInt(thread));
+        _ctx_switch_to(@intFromPtr(current), @intFromPtr(thread));
     }
 
     // uart.write("Switching to process {} thread {}\n", .{thread.proc.pid, thread.tid});

@@ -82,7 +82,7 @@ pub fn put(c: u8) void {
 
 pub fn get() u8 {
     while ((mmio.read(UART_FR).? & 0x10) != 0) {}
-    return @truncate(u8, mmio.read(UART_DR).?);
+    return @truncate(mmio.read(UART_DR).?);
 }
 
 pub fn writeBytes(data: []const u8) void {
@@ -91,15 +91,36 @@ pub fn writeBytes(data: []const u8) void {
     }
 }
 
-fn uartWrite(context: void, data: []const u8) error{}!usize {
-    _ = context;
-    writeBytes(data);
-    return data.len;
+// std's I/O was reworked ("Writergate"): `std.io.Writer(Ctx, Err, fn)` and the
+// top-level `std.fmt.format` are gone. We now implement the `std.Io.Writer`
+// vtable directly and format through `Writer.print`.
+fn uartDrain(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
+    // Flush anything that was buffered before this drain.
+    writeBytes(w.buffer[0..w.end]);
+    w.end = 0;
+
+    var written: usize = 0;
+    for (data[0 .. data.len - 1]) |bytes| {
+        writeBytes(bytes);
+        written += bytes.len;
+    }
+
+    // The last slice is the "splat" pattern, repeated `splat` times.
+    const pattern = data[data.len - 1];
+    var i: usize = 0;
+    while (i < splat) : (i += 1) writeBytes(pattern);
+    written += pattern.len * splat;
+
+    return written;
 }
 
-const UartWriter = std.io.Writer(void, error{}, uartWrite);
-pub const uart_writer = @as(UartWriter, .{ .context = {} });
+var uart_buf: [256]u8 = undefined;
+var uart_writer = std.Io.Writer{
+    .vtable = &.{ .drain = uartDrain },
+    .buffer = &uart_buf,
+};
 
-pub fn write(comptime data: []const u8, args: anytype,) void {
-    std.fmt.format(uart_writer, data, args) catch |e| switch (e) {};
+pub fn write(comptime data: []const u8, args: anytype) void {
+    uart_writer.print(data, args) catch {};
+    uart_writer.flush() catch {};
 }

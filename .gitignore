@@ -1,5 +1,6 @@
 .envrc
 workspace/
 zig-cache/
+.zig-cache/
 zig-out/
 *.core

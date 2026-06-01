@@ -8,15 +8,15 @@ extern const __page_tables_size: usize;
 fn build_identity_map() void {}
 
 fn activate_mmu() void {
-    var mair = regs.MAIR_EL1{
+    const mair = regs.MAIR_EL1{
         .Attr0 = 0xFF,
         .Attr1 = 0x04,
     };
     regs.MAIR_EL1.write(mair);
 
-    var feature_register = regs.ID_AA64MMFR0_EL1.read();
+    const feature_register = regs.ID_AA64MMFR0_EL1.read();
 
-    var tcr = regs.TCR_EL1{
+    const tcr = regs.TCR_EL1{
         .SH1 = regs.TCR_EL1.Shareability.InnerShareable,
         .ORGN1 = regs.TCR_EL1.OuterCacheability.NormalMemory_Outer_WriteBack_ReadAllocate_WriteAllocateCacheable,
         .IRGN1 = regs.TCR_EL1.InnerCacheability.NormalMemory_Inner_WriteBack_ReadAllocate_WriteAllocateCacheable,
@@ -44,7 +44,7 @@ fn activate_mmu() void {
 }
 
 fn drop_to_el2() void {
-    var scr_el3 = regs.SCR_EL3{
+    const scr_el3 = regs.SCR_EL3{
         .ST = 1, //  Don't trap access to Counter-timer Physical Secure registers
         .RW = 1, //  Lower level to use Aarch64
         .NS = 1, //  Non-secure state
@@ -52,7 +52,7 @@ fn drop_to_el2() void {
     };
     regs.SCR_EL3.write(scr_el3);
 
-    var spsr_el3 = regs.SPSR_EL3{
+    const spsr_el3 = regs.SPSR_EL3{
         .A = 1, //
         .I = 1, //
         .F = 1, //
@@ -66,7 +66,7 @@ fn drop_to_el2() void {
 }
 
 fn drop_to_el1() void {
-    var hcr_el2 = regs.HCR_EL2{
+    const hcr_el2 = regs.HCR_EL2{
         .RW = 1, //
     };
     regs.HCR_EL2.write(hcr_el2);
@@ -74,7 +74,7 @@ fn drop_to_el1() void {
     // Set up initial exception stack
     regs.SP_EL1.write(0x40000);
 
-    var spsr_el2 = regs.SPSR_EL2{
+    const spsr_el2 = regs.SPSR_EL2{
         .A = 1, //
         .I = 1, //
         .F = 1, //
@@ -103,7 +103,7 @@ fn drop_to_initial_el1() void {
     }
 }
 
-export fn preboot() linksection(".text.boot") callconv(.C) void {
+export fn preboot() linksection(".text.boot") callconv(.c) void {
     @setRuntimeSafety(false);
 
     // TODO: Ensure Stack pointer is configured BEFORE enterting here

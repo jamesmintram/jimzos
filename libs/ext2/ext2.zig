@@ -20,12 +20,12 @@ pub const Ext2_DirectoryEntry = extern struct {
 };
 
 pub const EXT2_S_IFSOCK = 0xC000; // socket
-pub const EXT2_S_IFLNK = 0xA000; //	symbolic link
-pub const EXT2_S_IFREG = 0x8000; //	regular file
-pub const EXT2_S_IFBLK = 0x6000; //	block device
-pub const EXT2_S_IFDIR = 0x4000; //	directory
-pub const EXT2_S_IFCHR = 0x2000; //	character device
-pub const EXT2_S_IFIFO = 0x1000; //	fifo
+pub const EXT2_S_IFLNK = 0xA000; // symbolic link
+pub const EXT2_S_IFREG = 0x8000; // regular file
+pub const EXT2_S_IFBLK = 0x6000; // block device
+pub const EXT2_S_IFDIR = 0x4000; // directory
+pub const EXT2_S_IFCHR = 0x2000; // character device
+pub const EXT2_S_IFIFO = 0x1000; // fifo
 
 pub const Ext2_InodeTableEntry = extern struct {
     i_mode: u16,
@@ -111,7 +111,7 @@ pub const Ext2_SuperBlock = extern struct {
     }
 
     pub fn block_size(self: *const Ext2_SuperBlock) u32 {
-        return @intCast(u32, 1024) << @intCast(u4, self.s_log_block_size);
+        return @as(u32, 1024) << @intCast(self.s_log_block_size);
     }
 
     pub fn block_index_for_block_group_descriptor(self: *const Ext2_SuperBlock, block_group_index: u32) u32 {
@@ -130,23 +130,23 @@ pub const Ext2_SuperBlock = extern struct {
 
     pub fn inode_at(self: *const Ext2_SuperBlock, parse_source: anytype, inode: u32) !Ext2_InodeTableEntry {
         // FIXME: Validate some inode_at stuff
-        var block_for_inode = (inode - 1) / self.s_inodes_per_group;
-        var inode_index = (inode - 1) % self.s_inodes_per_group;
+        const block_for_inode = (inode - 1) / self.s_inodes_per_group;
+        const inode_index = (inode - 1) % self.s_inodes_per_group;
 
-        var block_descriptor = try self.block_descriptor_at(parse_source, block_for_inode);
+        const block_descriptor = try self.block_descriptor_at(parse_source, block_for_inode);
         return try self.inode_table_at(parse_source, &block_descriptor, inode_index);
     }
 
     pub fn inode_table_at(self: *const Ext2_SuperBlock, parse_source: anytype, block_descriptor: *const Ext2_BlockGroupDescriptor, inode_index: u32) !Ext2_InodeTableEntry {
         // FIXME: Verify inode >= 1 OR error
         // FIXME: Verify inode_index <= self.s_inodes_per_group OR error
-        var inode_position = self.offset_for_block_index(block_descriptor.bg_inode_table) + @sizeOf(Ext2_InodeTableEntry) * inode_index;
+        const inode_position = self.offset_for_block_index(block_descriptor.bg_inode_table) + @sizeOf(Ext2_InodeTableEntry) * inode_index;
 
         //FIXME: Improve this, can we write directly into the struct?
         var inode_table_entry_buf: [@sizeOf(Ext2_InodeTableEntry)]u8 align(@alignOf(Ext2_InodeTableEntry)) = undefined;
         try parse_source.seekableStream().seekTo(inode_position);
         try parse_source.reader().readNoEof(&inode_table_entry_buf);
-        var inode_table_entry = @ptrCast(*const Ext2_InodeTableEntry, &inode_table_entry_buf);
+        const inode_table_entry: *const Ext2_InodeTableEntry = @ptrCast(&inode_table_entry_buf);
 
         //FIXME: Pass in an *out* param?
         return inode_table_entry.*;
@@ -157,12 +157,12 @@ pub const Ext2_SuperBlock = extern struct {
         // @import("std").log.info("block_descriptor_at:: {}", .{block_group_index});
 
         //FIXME: Assert that block_group_index > 0 (as zero is superblock) (TEST)
-        var block_index = self.block_index_for_block_group_descriptor(block_group_index);
+        const block_index = self.block_index_for_block_group_descriptor(block_group_index);
         // @import("std").log.info("block_descriptor_at::block_index {}", .{block_index});
 
         //FIXME: Assert that block_index < self.s_blocks_count (TEST)
 
-        var block_position = self.offset_for_block_index(block_index);
+        const block_position = self.offset_for_block_index(block_index);
 
         // @import("std").log.info("block_descriptor_at::block_position {}", .{block_position});
 
@@ -170,7 +170,7 @@ pub const Ext2_SuperBlock = extern struct {
         var block_group_descriptor_buf: [@sizeOf(Ext2_BlockGroupDescriptor)]u8 align(@alignOf(Ext2_BlockGroupDescriptor)) = undefined;
         try parse_source.seekableStream().seekTo(block_position);
         try parse_source.reader().readNoEof(&block_group_descriptor_buf);
-        var block_group_descriptor = @ptrCast(*const Ext2_BlockGroupDescriptor, &block_group_descriptor_buf);
+        const block_group_descriptor: *const Ext2_BlockGroupDescriptor = @ptrCast(&block_group_descriptor_buf);
 
         //FIXME: Pass in an *out* param?
         return block_group_descriptor.*;
@@ -212,7 +212,7 @@ pub fn DirectoryEntryIterator(ParseSource: anytype) type {
         pub fn file_type(self: *@This()) !u8 {
             if (self.super_block.s_rev_level > 0) return self.current.file_type;
 
-            var inode = try self.super_block.inode_at(self.parse_source, self.current.inode);
+            const inode = try self.super_block.inode_at(self.parse_source, self.current.inode);
 
             // TODO: Map other types of file
             if (inode.i_mode & EXT2_S_IFREG != 0) return EXT2_FT_REG_FILE;
@@ -232,7 +232,7 @@ pub fn DirectoryEntryIterator(ParseSource: anytype) type {
             var directory_entry_buf: [@sizeOf(Ext2_DirectoryEntry)]u8 align(@alignOf(Ext2_DirectoryEntry)) = undefined;
             try self.parse_source.seekableStream().seekTo(self.position);
             try self.parse_source.reader().readNoEof(&directory_entry_buf); //FIXME: Too Long (Shouldn't read the name ptr)
-            var directory_entry = @ptrCast(*const Ext2_DirectoryEntry, &directory_entry_buf);
+            const directory_entry: *const Ext2_DirectoryEntry = @ptrCast(&directory_entry_buf);
 
             // Reset the current name
             self.current_name[0] = 0;
@@ -255,23 +255,23 @@ pub const FS = struct {
         var super_block_buf: [@sizeOf(Ext2_SuperBlock)]u8 align(@alignOf(Ext2_SuperBlock)) = undefined;
         try parse_source.seekableStream().seekTo(1024);
         try parse_source.reader().readNoEof(&super_block_buf);
-        var super_block = @ptrCast(*const Ext2_SuperBlock, &super_block_buf);
+        const super_block: *const Ext2_SuperBlock = @ptrCast(&super_block_buf);
 
         //FIXME: Pass in an *out* param?
         return super_block.*;
     }
 
     pub fn directory_entry_iterator(self: *const FS, parse_source: anytype, inode: *Ext2_InodeTableEntry) !DirectoryEntryIterator(@TypeOf(parse_source)) {
-        var super_block = try self.superblock(parse_source);
+        const super_block = try self.superblock(parse_source);
 
         // FIXME: How to deal with the filename? When to read it and where to place it? file_name(dir_entry)??
-        var block_idx = inode.i_block[0];
-        var directory_entry_position = super_block.offset_for_block_index(block_idx);
+        const block_idx = inode.i_block[0];
+        const directory_entry_position = super_block.offset_for_block_index(block_idx);
 
         var directory_entry_buf: [@sizeOf(Ext2_DirectoryEntry)]u8 align(@alignOf(Ext2_DirectoryEntry)) = undefined;
         try parse_source.seekableStream().seekTo(directory_entry_position);
         try parse_source.reader().readNoEof(&directory_entry_buf);
-        var directory_entry = @ptrCast(*const Ext2_DirectoryEntry, &directory_entry_buf);
+        const directory_entry: *const Ext2_DirectoryEntry = @ptrCast(&directory_entry_buf);
 
         return DirectoryEntryIterator(@TypeOf(parse_source)){
             .parse_source = parse_source,

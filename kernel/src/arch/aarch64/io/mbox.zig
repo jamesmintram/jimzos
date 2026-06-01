@@ -42,7 +42,8 @@ pub var mbox: [36]u32 align(16) = [1]u32{0}**36;
 /// query will always return 0.
 pub fn mboxCall(d: u8) ?void {
     const val : u32 = 0xf; //FIXME
-    const r: u32 = @intCast(u32, (@ptrToInt(&mbox) & ~val)) | @intCast(u32, (@intCast(u32, d) & 0xF));
+    const addr: u32 = @truncate(@intFromPtr(&mbox));
+    const r: u32 = (addr & ~val) | (@as(u32, d) & 0xF);
     while(mmio.read(MBOX_STATUS).? & MBOX_FULL != 0) {
         mmio.wait(1);
     }

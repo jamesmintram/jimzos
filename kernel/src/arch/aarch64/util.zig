@@ -17,8 +17,8 @@ pub fn hang() noreturn {
 const PM_RSTC =  Register{ .ReadOnly = mmio.MMIO_BASE + 0x0010001C};
 const PM_RSTS = Register{ .ReadWrite = mmio.MMIO_BASE + 0x00100020 };
 const PM_WDOG =  Register{ .ReadOnly = mmio.MMIO_BASE + 0x00100024 };
-const PM_WDOG_MAGIC = u32(0x5A000000);
-const PM_RSTC_FULLRST = u32(0x00000020);
+const PM_WDOG_MAGIC = @as(u32, 0x5A000000);
+const PM_RSTC_FULLRST = @as(u32, 0x00000020);
 
 /// Power the SoC down into a very low power state.
 pub fn powerOff() void {
@@ -54,7 +54,7 @@ pub fn powerOff() void {
 
     // Power off SoC
     r = mmio.read(PM_RSTS);
-    r &= ~u32(0xfffffaaa);
+    r &= ~@as(u32, 0xfffffaaa);
     // Indicate halt
     r |= 0x555;
     mmio.write(PM_RSTS, PM_WDOG_MAGIC | r);
@@ -67,7 +67,7 @@ pub fn reset() void {
     var r: u32 = 0;
 
     r = mmio.read(PM_RSTS);
-    r &= ~u32(0xfffffaaa);
+    r &= ~@as(u32, 0xfffffaaa);
     mmio.write(PM_RSTS, PM_WDOG_MAGIC | r);
     mmio.write(PM_RSTS, PM_WDOG_MAGIC | 10);
     mmio.write(PM_RSTS, PM_WDOG_MAGIC | PM_RSTC_FULLRST);
@@ -106,18 +106,18 @@ const SYSTMR_LO = Register{ .ReadOnly = mmio.MMIO_BASE + 0x00003008 };
 
 /// Get system timer counter from the BCM chip.
 fn getSystemTimer() c_ulong {
-    var h = c_ulong(0);
-    var l = c_ulong(0);
-    var res = u32(0);
+    var h: c_ulong = 0;
+    var l: c_ulong = 0;
+    const res: u32 = 0;
 
     // read MMIO area as two separate c_ulong
-    h = @intCast(c_ulong, mmio.read(SYSTMR_HI).?);
-    l = @intCast(c_ulong, mmio.read(SYSTMR_LO).?);
+    h = @intCast(mmio.read(SYSTMR_HI).?);
+    l = @intCast(mmio.read(SYSTMR_LO).?);
 
     // re-read if high changed during first read
     if (h != mmio.read(SYSTMR_HI).?) {
-        h = @intCast(c_ulong, mmio.read(SYSTMR_HI).?);
-        l = @intCast(c_ulong, mmio.read(SYSTMR_LO).?);
+        h = @intCast(mmio.read(SYSTMR_HI).?);
+        l = @intCast(mmio.read(SYSTMR_LO).?);
     }
 
     return res;
@@ -126,8 +126,8 @@ fn getSystemTimer() c_ulong {
 /// Wait a given number of milliseconds.
 /// NOTE: This does NOT work on QEMU, as QEMU doesn't emulate the system timer.
 pub fn waitMsec(secs: u32) void {
-    var n = @intCast(c_ulong, secs);
-    var t = getSystemTimer();
+    const n: c_ulong = @intCast(secs);
+    const t = getSystemTimer();
 
     if (t != 0) {
         while (getSystemTimer() < t + n) {}

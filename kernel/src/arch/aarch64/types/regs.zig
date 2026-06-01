@@ -51,11 +51,11 @@ pub const SCR_EL3 = packed struct(usize) {
 
     const Self = @This();
     pub inline fn toBits(self: Self) usize {
-        return @bitCast(usize, self);
+        return @bitCast(self);
     }
 
     pub inline fn fromBits(bits: usize) SCR_EL3 {
-        return @bitCast(Self, bits);
+        return @bitCast(bits);
     }
 
     pub inline fn read() Self {
@@ -76,7 +76,7 @@ pub const SCR_EL3 = packed struct(usize) {
     }
 };
 test "empty SCR_EL3 to bits" {
-    var reg = SCR_EL3{};
+    const reg = SCR_EL3{};
     try expect(0x00000010 == reg.toBits());
 }
 
@@ -114,11 +114,11 @@ pub const SPSR_EL3 = packed struct(usize) {
 
     const Self = @This();
     pub inline fn toBits(self: Self) usize {
-        return @bitCast(usize, self);
+        return @bitCast(self);
     }
 
     pub inline fn fromBits(bits: usize) SPSR_EL3 {
-        return @bitCast(Self, bits);
+        return @bitCast(bits);
     }
 
     pub inline fn read() Self {
@@ -139,7 +139,7 @@ pub const SPSR_EL3 = packed struct(usize) {
     }
 };
 test "empty SPSR_EL3 to bits" {
-    var reg = SPSR_EL3{};
+    const reg =SPSR_EL3{};
     try expect(0x00000000 == reg.toBits());
 }
 
@@ -199,11 +199,11 @@ pub const HCR_EL2 = packed struct(usize) {
 
     const Self = @This();
     pub inline fn toBits(self: Self) usize {
-        return @bitCast(usize, self);
+        return @bitCast(self);
     }
 
     pub inline fn fromBits(bits: usize) HCR_EL2 {
-        return @bitCast(Self, bits);
+        return @bitCast(bits);
     }
 
     pub inline fn read() Self {
@@ -224,7 +224,7 @@ pub const HCR_EL2 = packed struct(usize) {
     }
 };
 test "empty HCR_EL2 to bits" {
-    var reg = HCR_EL2{};
+    const reg =HCR_EL2{};
     try expect(0x00000000 == reg.toBits());
 }
 
@@ -264,11 +264,11 @@ pub const SPSR_EL2 = packed struct(usize) {
 
     const Self = @This();
     pub inline fn toBits(self: Self) usize {
-        return @bitCast(usize, self);
+        return @bitCast(self);
     }
 
     pub inline fn fromBits(bits: usize) SPSR_EL2 {
-        return @bitCast(Self, bits);
+        return @bitCast(bits);
     }
 
     pub inline fn read() Self {
@@ -289,7 +289,7 @@ pub const SPSR_EL2 = packed struct(usize) {
     }
 };
 test "empty SPSR_EL2 to bits" {
-    var reg = SPSR_EL2{};
+    const reg =SPSR_EL2{};
     try expect(0x00000000 == reg.toBits());
 }
 
@@ -389,11 +389,11 @@ pub const TCR_EL1 = packed struct(usize) {
 
     const Self = @This();
     pub inline fn toBits(self: Self) usize {
-        return @bitCast(usize, self);
+        return @bitCast(self);
     }
 
     pub inline fn fromBits(bits: usize) TCR_EL1 {
-        return @bitCast(Self, bits);
+        return @bitCast(bits);
     }
 
     pub inline fn read() Self {
@@ -414,7 +414,7 @@ pub const TCR_EL1 = packed struct(usize) {
     }
 };
 test "empty TCR_EL1 to bits" {
-    var reg = TCR_EL1{};
+    const reg =TCR_EL1{};
     try expect(0x00000000 == reg.toBits());
 }
 
@@ -473,11 +473,11 @@ pub const SCTLR_EL1 = packed struct(usize) {
 
     const Self = @This();
     pub inline fn toBits(self: Self) usize {
-        return @bitCast(usize, self);
+        return @bitCast(self);
     }
 
     pub inline fn fromBits(bits: usize) SCTLR_EL1 {
-        return @bitCast(Self, bits);
+        return @bitCast(bits);
     }
 
     pub inline fn read() Self {
@@ -498,7 +498,7 @@ pub const SCTLR_EL1 = packed struct(usize) {
     }
 };
 test "empty SCTLR_EL1 to bits" {
-    var reg = SCTLR_EL1{};
+    const reg =SCTLR_EL1{};
     try expect(0x00500800 == reg.toBits());
 }
 
@@ -524,11 +524,11 @@ pub const ID_AA64MMFR0_EL1 = packed struct(usize) {
 
     const Self = @This();
     pub inline fn toBits(self: Self) usize {
-        return @bitCast(usize, self);
+        return @bitCast(self);
     }
 
     pub inline fn fromBits(bits: usize) Self {
-        return @bitCast(Self, bits);
+        return @bitCast(bits);
     }
 
     pub inline fn read() Self {
@@ -542,7 +542,7 @@ pub const ID_AA64MMFR0_EL1 = packed struct(usize) {
     }
 };
 test "empty ID_AA64MMFR0_EL1 to bits" {
-    var reg = ID_AA64MMFR0_EL1{};
+    const reg =ID_AA64MMFR0_EL1{};
     try expect(0x00000000 == reg.toBits());
 }
 
@@ -562,11 +562,11 @@ pub const MAIR_EL1 = packed struct(usize) {
 
     const Self = @This();
     pub inline fn toBits(self: Self) usize {
-        return @bitCast(usize, self);
+        return @bitCast(self);
     }
 
     pub inline fn fromBits(bits: usize) MAIR_EL1 {
-        return @bitCast(Self, bits);
+        return @bitCast(bits);
     }
 
     pub inline fn write(self: Self) void {
@@ -577,7 +577,7 @@ pub const MAIR_EL1 = packed struct(usize) {
     }
 };
 test "empty MAIR_EL1 to bits" {
-    var reg = MAIR_EL1{};
+    const reg =MAIR_EL1{};
     try expect(0x00000000 == reg.toBits());
 }
 
@@ -642,15 +642,15 @@ pub const ESR_EL1 = packed struct(usize) {
 
     const Self = @This();
     pub inline fn toBits(self: Self) usize {
-        return @bitCast(usize, self);
+        return @bitCast(self);
     }
 
     pub inline fn fromBits(bits: usize) ESR_EL1 {
-        return @bitCast(Self, bits);
+        return @bitCast(bits);
     }
 };
 test "empty ESR_EL1 to bits" {
-    var reg = ESR_EL1{};
+    const reg =ESR_EL1{};
     try expect(0x00000000 == reg.toBits());
 }
 
@@ -672,15 +672,15 @@ pub const DAIF = packed struct(usize) {
 
     const Self = @This();
     pub inline fn toBits(self: Self) usize {
-        return @bitCast(usize, self);
+        return @bitCast(self);
     }
 
     pub inline fn fromBits(bits: usize) DAIF {
-        return @bitCast(Self, bits);
+        return @bitCast(bits);
     }
 };
 test "empty DAIF to bits" {
-    var reg = DAIF{};
+    const reg =DAIF{};
     try expect(0x00000000 == reg.toBits());
 }
 
@@ -698,7 +698,7 @@ pub const ExceptionLevel = enum(u8) {
         );
 
         current_exception_level = (current_exception_level >> 2) & 0x3;
-        return @intToEnum(ExceptionLevel, current_exception_level);
+        return @enumFromInt(current_exception_level);
     }
 };
 

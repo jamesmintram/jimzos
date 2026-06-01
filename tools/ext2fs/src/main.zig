@@ -1,6 +1,36 @@
 const std = @import("std");
 const ext2 = @import("ext2");
 
+// std's `FixedBufferStream` (and the old `File.reader()` / `seekableStream()`)
+// were removed in the I/O rework. The ext2 parser only needs `seekTo` +
+// `readNoEof`, so we slurp the image into memory and serve those off the new
+// `std.Io.Reader` (moving its `seek` cursor for random access).
+const Stream = struct {
+    inner: std.Io.Reader,
+
+    pub fn init(buffer: []const u8) Stream {
+        return .{ .inner = std.Io.Reader.fixed(buffer) };
+    }
+
+    pub fn reader(self: *Stream) *Stream {
+        return self;
+    }
+
+    pub fn seekableStream(self: *Stream) *Stream {
+        return self;
+    }
+
+    pub fn seekTo(self: *Stream, pos: u64) !void {
+        const p: usize = @intCast(pos);
+        if (p > self.inner.end) return error.EndOfStream;
+        self.inner.seek = p;
+    }
+
+    pub fn readNoEof(self: *Stream, buf: []u8) !void {
+        try self.inner.readSliceAll(buf);
+    }
+};
+
 // FIXME: What do we pass in here? Look at elf+dwarf parser for inspiration?
 pub fn printSuperBlock(super_block: *const ext2.Ext2_SuperBlock) void {
     std.log.info("FS Info:", .{});
@@ -63,29 +93,36 @@ pub fn printDirectoryEntry(directory_entry: *const ext2.Ext2_DirectoryEntry) voi
 pub fn main() anyerror!void {
     std.log.info("Inspect an ext2 image (All your files are belong to us.)", .{});
 
+    const gpa = std.heap.page_allocator;
+    var threaded: std.Io.Threaded = .init(gpa, .{});
+    const io = threaded.io();
+
     const fname = "data/test3.img";
 
-    var f = std.fs.cwd().openFile(fname, std.fs.File.OpenFlags{ .read = true }) catch {
+    const data = std.Io.Dir.cwd().readFileAlloc(io, fname, gpa, .unlimited) catch {
         std.log.err("Error opening file: {s}", .{fname});
         return;
     };
+    defer gpa.free(data);
 
-    var fs = try ext2.FS.mount(f);
+    var stream = Stream.init(data);
 
-    var super_block = try fs.superblock(f);
+    const fs = try ext2.FS.mount(&stream);
+
+    const super_block = try fs.superblock(&stream);
 
     printSuperBlock(&super_block);
 
-    var block_descriptor = try super_block.block_descriptor_at(f, 0);
+    const block_descriptor = try super_block.block_descriptor_at(&stream, 0);
     printBlockGroupDescriptor(&block_descriptor);
 
     // TODO: How to handle sparse superblocks
     // FIXME: Change magic number from 2 => Ext2RootInodeIndex
 
-    var inode = try super_block.inode_table_at(f, &block_descriptor, 1); // 1 is reserved as root directory
+    var inode = try super_block.inode_table_at(&stream, &block_descriptor, 1); // 1 is reserved as root directory
     printInodeTableEntry(&inode);
 
-    var directory_entry_iterator = try fs.directory_entry_iterator(f, &inode);
+    var directory_entry_iterator = try fs.directory_entry_iterator(&stream, &inode);
 
     while (try directory_entry_iterator.next()) |_| {
         //FIXME: Should pass in a struct containg meta + dir entry

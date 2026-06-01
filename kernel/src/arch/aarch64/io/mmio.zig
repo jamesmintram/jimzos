@@ -1,7 +1,12 @@
-const AtomicOrder = @import("std").builtin.AtomicOrder;
 const regs = @import("../types/regs.zig");
 
 const Register = regs.Register;
+
+/// Full system data memory barrier. Replaces the old `@fence(.SeqCst)` (the
+/// `@fence` builtin was removed) so MMIO accesses stay ordered on real hardware.
+inline fn barrier() void {
+    asm volatile ("dmb sy" ::: .{ .memory = true });
+}
 
 /// Base address for the MMIO operations.
 pub const MMIO_BASE : u32 = 0x3F000000;
@@ -16,14 +21,14 @@ pub const MMIO_BASE : u32 = 0x3F000000;
 /// Write data to a given MMIO register, returning null
 /// if the register had an incorrect type.
 pub fn write(reg: Register, data: u32) ?void {
-    @fence(AtomicOrder.SeqCst);
+    barrier();
     switch (reg) {
         Register.ReadOnly => return null,
         Register.WriteOnly => {
-            @intToPtr(*volatile u32, reg.WriteOnly).* = data;
+            @as(*volatile u32, @ptrFromInt(reg.WriteOnly)).* = data;
         },
         Register.ReadWrite => {
-            @intToPtr(*volatile u32, reg.ReadWrite).* = data;
+            @as(*volatile u32, @ptrFromInt(reg.ReadWrite)).* = data;
         }
     }
 }
@@ -31,14 +36,14 @@ pub fn write(reg: Register, data: u32) ?void {
 /// Read data to a given MMIO register, returning null.
 /// if the register had an incorrect type.
 pub fn read(reg: Register) ?u32 {
-    @fence(AtomicOrder.SeqCst);
+    barrier();
     switch (reg) {
         Register.WriteOnly => return null,
         Register.ReadOnly => {
-            return @intToPtr(*volatile u32, reg.ReadOnly).*;
+            return @as(*volatile u32, @ptrFromInt(reg.ReadOnly)).*;
         },
         Register.ReadWrite => {
-            return @intToPtr(*volatile u32, reg.ReadWrite).*;
+            return @as(*volatile u32, @ptrFromInt(reg.ReadWrite)).*;
         }
     }
 }
