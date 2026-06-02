@@ -4,3 +4,5 @@ zig-cache/
 .zig-cache/
 zig-out/
 *.core
+
+notes.local
