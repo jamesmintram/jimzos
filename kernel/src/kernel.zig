@@ -25,6 +25,12 @@ const kernel_elf = @import("kernel_elf.zig");
 const ext2 = @import("ext2");
 const buffer_stream = @import("buffer_stream.zig");
 
+// Force the arch entry/exit glue (enter_virtual_addressing, exit) to be
+// compiled so its `export fn`s are emitted into the image.
+comptime {
+    _ = @import("arch/aarch64/kernel_entry.zig");
+}
+
 export fn kmain() noreturn {
     arch_init.init();
     kernel_elf.init() catch unreachable;

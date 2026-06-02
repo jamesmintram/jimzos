@@ -702,6 +702,11 @@ pub const ExceptionLevel = enum(u8) {
     EL3 = 3, //                 Secure Monitor / firmware
 
     pub inline fn read() ExceptionLevel {
+        // No safety check on @enumFromInt: CurrentEL[3:2] is always 0-3 (all
+        // valid), and the check would emit a panic call into the high .text,
+        // which is unreachable from MMU-off boot code that inlines this.
+        @setRuntimeSafety(false);
+
         var current_exception_level: usize = 0;
 
         asm ("mrs  %[value], CurrentEL"
@@ -719,6 +724,28 @@ pub const SP_EL1 = struct {
         asm volatile ("msr sp_el1, %[value]"
             :
             : [value] "r" (sp_el1),
+        );
+    }
+};
+
+// Translation Table Base Register 0 (EL1): root table for the low (TTBR0) VA
+// range. `baddr` is the physical base of the translation tables.
+pub const TTBR0_EL1 = struct {
+    pub inline fn write(baddr: usize) void {
+        asm volatile ("msr ttbr0_el1, %[value]"
+            :
+            : [value] "r" (baddr),
+        );
+    }
+};
+
+// Translation Table Base Register 1 (EL1): root table for the high (TTBR1) VA
+// range. `baddr` is the physical base of the translation tables.
+pub const TTBR1_EL1 = struct {
+    pub inline fn write(baddr: usize) void {
+        asm volatile ("msr ttbr1_el1, %[value]"
+            :
+            : [value] "r" (baddr),
         );
     }
 };

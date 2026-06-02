@@ -13,11 +13,16 @@ pub fn build(b: *std.Build) void {
 
     const optimize = b.standardOptimizeOption(.{});
 
-    // Freestanding aarch64 (generic CPU, no NEON/FP tweaks).
+    // Freestanding aarch64 with FP/SIMD disabled (the -mgeneral-regs-only
+    // equivalent). Kernel code is integer-only — like Linux/BSD, the kernel
+    // never touches the V-registers, so it needn't save/restore them and the
+    // compiler can't emit SIMD for memcpy/std.fmt. FP for EL0 will be managed
+    // per-thread once userspace exists.
     const target = b.resolveTargetQuery(.{
         .cpu_arch = .aarch64,
         .os_tag = .freestanding,
         .cpu_model = .{ .explicit = &std.Target.aarch64.cpu.generic },
+        .cpu_features_sub = std.Target.aarch64.featureSet(&.{ .neon, .fp_armv8 }),
     });
 
     // Preboot is built as its own static library so it gets its own root
@@ -50,7 +55,6 @@ pub fn build(b: *std.Build) void {
     });
     exe_mod.addImport("ext2", ext2_mod);
 
-    exe_mod.addAssemblyFile(b.path("src/arch/aarch64/kernel_entry.S"));
     exe_mod.addAssemblyFile(b.path("src/arch/aarch64/kernel_pre.S"));
     exe_mod.addAssemblyFile(b.path("src/arch/aarch64/exception.S"));
     exe_mod.addAssemblyFile(b.path("src/arch/aarch64/context.S"));
