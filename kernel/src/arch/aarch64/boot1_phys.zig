@@ -1,3 +1,7 @@
+// aarch64 boot stage 1: physical, MMU-off bring-up. Drops to EL1, builds the
+// identity map, enables the MMU, then hands off to boot2_virt (enter_higher_half
+// -> enter_virtual_addressing) once running in the higher half.
+
 const regs = @import("types/regs.zig");
 const processor = @import("processor.zig");
 const asm64 = @import("asm.zig");
@@ -224,30 +228,42 @@ fn drop_to_initial_el1() linksection(".text.boot") void {
 /// Hand control to the kernel proper, which is linked in the higher half. A
 /// normal branch cannot reach VA 0xFFFF…, so load the absolute address from a
 /// literal pool and branch to it indirectly. Runs with the MMU on (TTBR1 maps
-/// the high half); enter_virtual_addressing sets the virtual SP, clears BSS
-/// and calls kmain, so it never returns.
-fn enter_higher_half() linksection(".text.boot") noreturn {
+/// the high half); enter_virtual_addressing sets the virtual SP, then init_arm
+/// clears BSS and calls kmain, so it never returns. boot_x0 (x0 at reset) is
+/// forwarded untouched to init_arm.
+fn enter_higher_half(boot_x0: usize) linksection(".text.boot") noreturn {
     @setRuntimeSafety(false);
 
+    // Bind boot_x0 to x0 so it survives the indirect branch into
+    // enter_virtual_addressing -> init_arm, which expects it as arg0.
     asm volatile (
         \\ ldr x8, =_vectors
         \\ msr vbar_el1, x8
         \\ ldr x8, =enter_virtual_addressing
         \\ br  x8
-        ::: .{ .x8 = true });
+        :
+        : [x0] "{x0}" (boot_x0),
+        : .{ .x8 = true });
 
     unreachable;
 }
 
-export fn preboot() linksection(".text.boot") callconv(.c) void {
+export fn boot1_phys(boot_x0: usize) linksection(".text.boot") callconv(.c) void {
     @setRuntimeSafety(false);
 
     // TODO: Ensure Stack pointer is configured BEFORE entering here
 
+    // boot_x0 is whatever x0 held at the reset entry (boot0 leaves x0 untouched).
+    // Keep it live across the bring-up calls below — the compiler parks it in a
+    // callee-saved register — and forward it to the kernel via x0. On raspi3b
+    // this is not the DTB; on a generic armv8/EFI boot it will be (see init_arm).
+
     drop_to_initial_el1();
+
+    // Disable interrupts
 
     build_identity_map();
     activate_mmu();
 
-    enter_higher_half();
+    enter_higher_half(boot_x0);
 }

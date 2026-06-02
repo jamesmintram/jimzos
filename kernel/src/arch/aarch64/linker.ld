@@ -25,6 +25,8 @@ SECTIONS {
   /* This is the bootstrap                          */
   /*------------------------------------------------*/
 
+  /* QEMU's raspi3b resets all cores to PC=0x0, so the reset stub (.text.entry)
+     MUST live at 0x0 — it is the reset vector, not just an ELF entry point. */
   .boot.text 0x0 : {
     KEEP(*(.text.entry))
     . = 0x80000;  /* Space for command line.  */

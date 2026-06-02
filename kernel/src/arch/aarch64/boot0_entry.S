@@ -1,3 +1,5 @@
+// aarch64 boot stage 0: raw reset entry (MMU off, physical, low VAs).
+// Parks secondary cores, sets the boot stack, then branches to boot1_phys.
 .section ".text.entry"
 .global __start
 __start:
@@ -18,9 +20,9 @@ __start_master:
   mov	  sp, x2
 
   // Dropping to EL1, page-table setup and enabling the MMU now live in
-  // preboot.zig. The post-MMU continuation is kernel_entry.S:
+  // boot1_phys.zig. The post-MMU continuation is boot2_virt.zig:
   // enter_virtual_addressing.
-  b preboot
+  b boot1_phys
 
 __hang:
   # wait forever in case of exit

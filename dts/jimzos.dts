@@ -1,0 +1,67 @@
+/dts-v1/;
+
+/*
+ * jimzos.dts — minimal device tree for JimZOS on the Raspberry Pi 3 (BCM2837),
+ * as emulated by `qemu-system-aarch64 -M raspi3b`.
+ *
+ * This is deliberately the smallest tree that describes the two things the
+ * kernel needs to bootstrap: the CPUs and the system RAM. Peripherals (the
+ * console/UART, interrupt controller, timer, ...) get added as the kernel
+ * grows a device model.
+ *
+ * Build:  dtc -I dts -O dtb -o jimzos.dtb jimzos.dts   (or `zig build dtb`)
+ */
+
+/ {
+	#address-cells = <1>;	/* addresses are a single 32-bit cell ... */
+	#size-cells = <1>;	/* ... and so are region sizes (Pi3 RAM < 4 GiB) */
+
+	model = "JimZOS Raspberry Pi 3 Model B";
+	compatible = "raspberrypi,3-model-b", "brcm,bcm2837";
+
+	/*
+	 * System RAM. The BCM2837 places the peripheral (MMIO) window at
+	 * 0x3f00_0000, so usable RAM for the ARM cores runs 0x0 .. 0x3eff_ffff
+	 * (1008 MiB). This matches RAM_TOP / MMIO_BASE in boot1_phys.zig.
+	 */
+	memory@0 {
+		device_type = "memory";
+		reg = <0x00000000 0x3f000000>;
+	};
+
+	/*
+	 * The four Cortex-A53 cores. `reg` is the core's MPIDR_EL1.Aff0 value,
+	 * which boot0_entry.S masks out to park the secondaries (the
+	 * `and x7, x7, #3` there). SMP bring-up details (enable-method /
+	 * cpu-release-addr or PSCI) are intentionally omitted until we
+	 * actually start the secondary cores.
+	 */
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpu@0 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53";
+			reg = <0>;
+		};
+
+		cpu@1 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53";
+			reg = <1>;
+		};
+
+		cpu@2 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53";
+			reg = <2>;
+		};
+
+		cpu@3 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53";
+			reg = <3>;
+		};
+	};
+};

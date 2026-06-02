@@ -25,20 +25,21 @@ pub fn build(b: *std.Build) void {
         .cpu_features_sub = std.Target.aarch64.featureSet(&.{ .neon, .fp_armv8 }),
     });
 
-    // Preboot is built as its own static library so it gets its own root
-    // source file (linksection(".text.boot") entry point).
-    const preboot_mod = b.createModule(.{
-        .root_source_file = b.path("src/arch/aarch64/preboot.zig"),
+    // boot1_phys (the physical, MMU-off bring-up) is built as its own static
+    // library so it gets its own root source file (linksection(".text.boot")
+    // entry point).
+    const boot1_phys_mod = b.createModule(.{
+        .root_source_file = b.path("src/arch/aarch64/boot1_phys.zig"),
         .target = target,
         .optimize = optimize,
         // No .eh_frame: the kernel runs at VA 0xFFFF…, but .text.boot links at a
         // low physical address, so unwind-table PREL32 relocations overflow.
         .unwind_tables = .none,
     });
-    const lib_preboot = b.addLibrary(.{
-        .name = "preboot",
+    const lib_boot1_phys = b.addLibrary(.{
+        .name = "boot1_phys",
         .linkage = .static,
-        .root_module = preboot_mod,
+        .root_module = boot1_phys_mod,
     });
 
     const ext2_mod = b.createModule(.{
@@ -55,11 +56,11 @@ pub fn build(b: *std.Build) void {
     });
     exe_mod.addImport("ext2", ext2_mod);
 
-    exe_mod.addAssemblyFile(b.path("src/arch/aarch64/kernel_pre.S"));
+    exe_mod.addAssemblyFile(b.path("src/arch/aarch64/boot0_entry.S"));
     exe_mod.addAssemblyFile(b.path("src/arch/aarch64/exception.S"));
     exe_mod.addAssemblyFile(b.path("src/arch/aarch64/context.S"));
 
-    exe_mod.linkLibrary(lib_preboot);
+    exe_mod.linkLibrary(lib_boot1_phys);
 
     const exe = b.addExecutable(.{
         .name = "kernel8.elf",
@@ -84,6 +85,19 @@ pub fn build(b: *std.Build) void {
     dump_step.dependOn(&exe.step);
     dump_step.dependOn(&run_objcopy.step);
     dump_step.dependOn(&run_create_syms.step);
+
+    // Compile the device tree (../dts/jimzos.dts -> zig-out/jimzos.dtb) with the
+    // system `dtc`. Kept as its own step so a plain kernel build does not need
+    // `dtc` on PATH; run with `zig build dtb`. The blob will be handed to the
+    // kernel via QEMU's `-dtb` (x0 = blob address) as a follow-up.
+    const run_dtc = b.addSystemCommand(&[_][]const u8{ "dtc", "-I", "dts", "-O", "dtb", "-o" });
+    const dtb_file = run_dtc.addOutputFileArg("jimzos.dtb");
+    run_dtc.addFileArg(b.path("../dts/jimzos.dts"));
+
+    const install_dtb = b.addInstallFile(dtb_file, "jimzos.dtb");
+
+    const dtb_step = b.step("dtb", "Compile the device tree (dts -> dtb)");
+    dtb_step.dependOn(&install_dtb.step);
 
     // The default `zig build` produces the ELF, the flat binary and the dumps.
     b.getInstallStep().dependOn(&run_objcopy.step);
@@ -110,6 +124,15 @@ pub fn build(b: *std.Build) void {
         "-device",
         "loader,file=../tools/ext2fs/data/test1.img,addr=0x2000000,force-raw=true",
     });
+    // raspi3b resets to 0x0 (kernel reset stub) and does NOT pass the DTB in x0,
+    // and `-dtb` would overlap the stub at 0x0 — so load the device tree at a
+    // fixed free address like the other blobs. 0x3000000 is clear of them, below
+    // MMIO (0x3f000000), and inside identity-mapped RAM.
+    run_qemu.addArgs(&[_][]const u8{
+        "-device",
+        "loader,file=zig-out/jimzos.dtb,addr=0x3000000,force-raw=true",
+    });
+    run_qemu.step.dependOn(&install_dtb.step);
 
     const qemu_step = b.step("qemu", "run kernel in qemu");
     qemu_step.dependOn(b.getInstallStep());

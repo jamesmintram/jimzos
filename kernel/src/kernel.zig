@@ -28,7 +28,7 @@ const buffer_stream = @import("buffer_stream.zig");
 // Force the arch entry/exit glue (enter_virtual_addressing, exit) to be
 // compiled so its `export fn`s are emitted into the image.
 comptime {
-    _ = @import("arch/aarch64/kernel_entry.zig");
+    _ = @import("arch/aarch64/boot2_virt.zig");
 }
 
 export fn kmain() noreturn {
