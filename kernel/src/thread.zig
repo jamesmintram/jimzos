@@ -12,7 +12,7 @@ pub const CPUFrame = extern struct {
     tf_x: [30]u64 align(1), //32
 };
 
-pub const Thread = struct {
+pub const Thread = extern struct {
     next: ?*Thread,
     prev: ?*Thread,
 
@@ -26,6 +26,19 @@ pub const Thread = struct {
     // Alignment better done some other way?
     kernel_stack: [4096]u8 align(16),
 };
+
+comptime {
+    if (@offsetOf(Thread, "next") != 0 or
+        @offsetOf(Thread, "prev") != 8 or
+        @offsetOf(Thread, "proc") != 16 or
+        @offsetOf(Thread, "tid") != 24 or
+        @offsetOf(Thread, "stack_pointer") != 32 or
+        @offsetOf(Thread, "kernel_stack") != 48 or
+        @sizeOf(Thread) != 4144)
+    {
+        @compileError("Thread layout no longer matches struct_defs_Thread.h");
+    }
+}
 
 pub fn create_default_thread(allocator: *Allocator, parent: *process.Process) !*Thread {
     const newThread = try allocator.create(Thread);
@@ -58,12 +71,12 @@ pub fn create_initial_thread(allocator: *Allocator, thread_fn: *const fn () void
     newThread.next = undefined;
     newThread.prev = undefined;
 
-    // Stack should start from the END of the array
-    newThread.stack_pointer = @intFromPtr(&newThread.kernel_stack[newThread.kernel_stack.len - 1]) - @sizeOf(CPUFrame);
+    const stack_top = @intFromPtr(&newThread.kernel_stack) + newThread.kernel_stack.len;
+    newThread.stack_pointer = stack_top - @sizeOf(CPUFrame);
 
     const frame: *CPUFrame = @ptrFromInt(newThread.stack_pointer);
+    frame.* = std.mem.zeroes(CPUFrame);
 
-    frame.tf_elr = 0;
     frame.tf_lr = @intFromPtr(thread_fn);
     frame.tf_sp = newThread.stack_pointer;
 
