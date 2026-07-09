@@ -93,11 +93,9 @@
 		ranges;
 
 		/*
-		 * PL011 (PrimeCell) UART0 — the current kprint console. uart.zig
-		 * programs the baud divisors against a 4 MHz reference clock it
-		 * sets via the VideoCore mailbox (MBOX_TAG_SETCLKRATE);
-		 * clock-frequency records that rate so a future DT-driven init can
-		 * drop the bespoke mailbox call. reg is the full PrimeCell block.
+		 * PL011 (PrimeCell) UART0. The generic driver consumes reg and
+		 * clock-frequency; the raspi3 platform hook supplies the VideoCore
+		 * clock and GPIO setup before the early console configures PL011.
 		 */
 		serial@3f201000 {
 			compatible = "arm,pl011", "arm,primecell";

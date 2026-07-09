@@ -1,17 +1,48 @@
 const std = @import("std");
 
-// NOTE: The `struct_defs_*.h` headers under src/arch/aarch64 are consumed by
-// context.S (struct field offsets for the assembly context switch). They used
-// to be regenerated here from @typeInfo(Thread)/@typeInfo(CPUFrame) at build
-// time, but the std file-writing API now requires an async `Io` instance which
-// is awkward to obtain in a build script. The headers are committed and the
-// Thread/CPUFrame layouts are stable; regenerate them by hand if those structs
-// change.
+// context.S consumes the committed `struct_defs_*.h` offsets. Keep those
+// headers synchronized with Thread and CPUFrame; Thread also has compile-time
+// layout assertions in thread.zig.
 
 pub fn build(b: *std.Build) void {
+    const Platform = enum { raspi3, virt };
+    const PlatformConfig = struct {
+        fdt_phys: usize,
+        kernel_elf_phys: usize,
+        ext2_phys: usize,
+        ram_phys_end: usize,
+        dts: ?[]const u8,
+        linker_script: []const u8,
+    };
     const want_gdb = b.option(bool, "gdb", "Build for QEMU gdb server") orelse false;
+    const platform = b.option(Platform, "platform", "Target platform") orelse .virt;
+
+    const platform_config: PlatformConfig = switch (platform) {
+        .raspi3 => .{
+            .fdt_phys = @as(usize, 0x03000000),
+            .kernel_elf_phys = @as(usize, 0x01000000),
+            .ext2_phys = @as(usize, 0x02000000),
+            .ram_phys_end = @as(usize, 0x3f000000),
+            .dts = "../dts/jimzos.dts",
+            .linker_script = "src/arch/aarch64/linker_raspi3.ld",
+        },
+        .virt => .{
+            .fdt_phys = @as(usize, 0x40000000),
+            .kernel_elf_phys = @as(usize, 0x4f000000),
+            .ext2_phys = @as(usize, 0x50000000),
+            .ram_phys_end = @as(usize, 0x80000000),
+            .dts = null,
+            .linker_script = "src/arch/aarch64/linker_virt.ld",
+        },
+    };
 
     const optimize = b.standardOptimizeOption(.{});
+    const build_options = b.addOptions();
+    build_options.addOption(Platform, "platform", platform);
+    build_options.addOption(usize, "fdt_phys", platform_config.fdt_phys);
+    build_options.addOption(usize, "kernel_elf_phys", platform_config.kernel_elf_phys);
+    build_options.addOption(usize, "ext2_phys", platform_config.ext2_phys);
+    build_options.addOption(usize, "ram_phys_end", platform_config.ram_phys_end);
 
     // Freestanding aarch64 with FP/SIMD disabled (the -mgeneral-regs-only
     // equivalent). Kernel code is integer-only — like Linux/BSD, the kernel
@@ -36,6 +67,7 @@ pub fn build(b: *std.Build) void {
         // low physical address, so unwind-table PREL32 relocations overflow.
         .unwind_tables = .none,
     });
+    boot1_phys_mod.addOptions("build_options", build_options);
     const lib_boot1_phys = b.addLibrary(.{
         .name = "boot1_phys",
         .linkage = .static,
@@ -54,6 +86,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .unwind_tables = .none,
     });
+    exe_mod.addOptions("build_options", build_options);
     exe_mod.addImport("ext2", ext2_mod);
 
     exe_mod.addAssemblyFile(b.path("src/arch/aarch64/boot0_entry.S"));
@@ -69,7 +102,7 @@ pub fn build(b: *std.Build) void {
         .name = "kernel8.elf",
         .root_module = exe_mod,
     });
-    exe.setLinkerScript(b.path("src/arch/aarch64/linker.ld"));
+    exe.setLinkerScript(b.path(platform_config.linker_script));
     // Match the linker script's ENTRY(__start); otherwise lld defaults to
     // looking for `_start` and warns it cannot find the entry symbol.
     exe.entry = .{ .symbol_name = "__start" };
@@ -89,18 +122,15 @@ pub fn build(b: *std.Build) void {
     dump_step.dependOn(&run_objcopy.step);
     dump_step.dependOn(&run_create_syms.step);
 
-    // Compile the device tree (../dts/jimzos.dts -> zig-out/jimzos.dtb) with the
-    // system `dtc`. Kept as its own step so a plain kernel build does not need
-    // `dtc` on PATH; run with `zig build dtb`. The blob will be handed to the
-    // kernel via QEMU's `-dtb` (x0 = blob address) as a follow-up.
-    const run_dtc = b.addSystemCommand(&[_][]const u8{ "dtc", "-I", "dts", "-O", "dtb", "-o" });
-    const dtb_file = run_dtc.addOutputFileArg("jimzos.dtb");
-    run_dtc.addFileArg(b.path("../dts/jimzos.dts"));
-
-    const install_dtb = b.addInstallFile(dtb_file, "jimzos.dtb");
+    const install_dtb = if (platform_config.dts) |dts| blk: {
+        const run_dtc = b.addSystemCommand(&[_][]const u8{ "dtc", "-I", "dts", "-O", "dtb", "-o" });
+        const dtb_file = run_dtc.addOutputFileArg("jimzos.dtb");
+        run_dtc.addFileArg(b.path(dts));
+        break :blk b.addInstallFile(dtb_file, "jimzos.dtb");
+    } else null;
 
     const dtb_step = b.step("dtb", "Compile the device tree (dts -> dtb)");
-    dtb_step.dependOn(&install_dtb.step);
+    if (install_dtb) |install| dtb_step.dependOn(&install.step);
 
     // The default `zig build` produces the ELF, the flat binary and the dumps.
     b.getInstallStep().dependOn(&run_objcopy.step);
@@ -108,36 +138,44 @@ pub fn build(b: *std.Build) void {
 
     // Run the kernel under QEMU.
     const run_qemu = b.addSystemCommand(&[_][]const u8{"qemu-system-aarch64"});
-    run_qemu.addArg("-kernel");
-    run_qemu.addArtifactArg(exe);
-    run_qemu.addArgs(&[_][]const u8{
-        "-m",         "1024",
-        "-M",         "raspi3b",
-        "-nographic", "-semihosting",
-    });
+    run_qemu.addArgs(&.{ "-m", "1024", "-nographic", "-semihosting" });
+    switch (platform) {
+        .raspi3 => {
+            run_qemu.addArgs(&.{ "-M", "raspi3b", "-kernel" });
+            run_qemu.addArtifactArg(exe);
+        },
+        .virt => run_qemu.addArgs(&.{
+            "-M",
+            "virt,dtb-randomness=off",
+            "-cpu",
+            "cortex-a57",
+            "-smp",
+            "1",
+            "-device",
+            "loader,file=zig-out/bin/kernel8.elf,cpu-num=0",
+        }),
+    }
     if (want_gdb) {
         run_qemu.addArgs(&[_][]const u8{ "-S", "-s" });
     }
 
-    run_qemu.addArgs(&[_][]const u8{
+    run_qemu.addArgs(&.{
         "-device",
-        "loader,file=zig-out/bin/kernel8.elf,addr=0x1000000,force-raw=true",
+        b.fmt("loader,file=zig-out/bin/kernel8.elf,addr=0x{x},force-raw=true", .{platform_config.kernel_elf_phys}),
     });
-    run_qemu.addArgs(&[_][]const u8{
+    run_qemu.addArgs(&.{
         "-device",
-        "loader,file=../tools/ext2fs/data/test1.img,addr=0x2000000,force-raw=true",
+        b.fmt("loader,file=../tools/ext2fs/data/test1.img,addr=0x{x},force-raw=true", .{platform_config.ext2_phys}),
     });
-    // raspi3b resets to 0x0 (kernel reset stub) and does NOT pass the DTB in x0,
-    // and `-dtb` would overlap the stub at 0x0 — so load the device tree at a
-    // fixed free address like the other blobs. 0x3000000 is clear of them, below
-    // MMIO (0x3f000000), and inside identity-mapped RAM.
-    run_qemu.addArgs(&[_][]const u8{
-        "-device",
-        "loader,file=zig-out/jimzos.dtb,addr=0x3000000,force-raw=true",
-    });
-    run_qemu.step.dependOn(&install_dtb.step);
+    if (install_dtb) |install| {
+        run_qemu.addArgs(&.{
+            "-device",
+            b.fmt("loader,file=zig-out/jimzos.dtb,addr=0x{x},force-raw=true", .{platform_config.fdt_phys}),
+        });
+        run_qemu.step.dependOn(&install.step);
+    }
+    run_qemu.step.dependOn(b.getInstallStep());
 
     const qemu_step = b.step("qemu", "run kernel in qemu");
-    qemu_step.dependOn(b.getInstallStep());
     qemu_step.dependOn(&run_qemu.step);
 }

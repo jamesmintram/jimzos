@@ -2,6 +2,17 @@
 
 ## build and run
 
+The default target is QEMU's generic Arm `virt` platform:
+
+    cd kernel
+    zig build qemu
+
+The Raspberry Pi 3 target is available explicitly:
+
+    zig build qemu -Dplatform=raspi3
+
+To start either target paused with a GDB server:
+
     zig build qemu -Dgdb=true
     gdb/gdb.sh
 

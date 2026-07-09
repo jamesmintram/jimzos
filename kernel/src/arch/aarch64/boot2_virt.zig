@@ -1,6 +1,4 @@
 // aarch64 boot stage 2: higher-half entry/exit glue (MMU on, virtual VAs).
-// Ported from the old kernel_entry.S.
-//
 // boot1_phys.zig branches to `enter_virtual_addressing` once the MMU is on, so
 // this code runs in the higher half.
 
@@ -14,6 +12,14 @@ extern var __bss_end: u8;
 const std = @import("std");
 const kprint = @import("../../kprint.zig");
 const DeviceTree = @import("DeviceTree");
+const build_options = @import("build_options");
+const console = @import("../../console.zig");
+const dt_console = @import("device_tree_console.zig");
+const platform = @import("platform.zig");
+const Pl011 = @import("../../drivers/serial/pl011.zig").Pl011;
+
+var early_console: Pl011 = undefined;
+var attached_console: Pl011 = undefined;
 
 /// Print the full path of every node in the device tree, root first then all
 /// descendants in tree order (nodeIterator walks root's children, so root `/`
@@ -75,59 +81,16 @@ fn looksLikeString(raw: []const u8) bool {
     return true;
 }
 
-/// Read the single u32 value of `name` on `node`, or null if absent.
-fn propU32(dt: DeviceTree, node: DeviceTree.Node, name: []const u8) !?u32 {
-    var it = try node.propertyIterator(dt, .{ .name = name });
-    return if (try it.next()) |prop| prop.value.toU32() else null;
+fn dumpConsole(config: @import("../../drivers/serial/pl011.zig").Config) void {
+    kprint.write("  PL011 base = 0x{x}, size = 0x{x}\r", .{ config.physical_base, config.region_size });
+    kprint.write("  clock = {} Hz, baud = {}\r", .{ config.clock_hz, config.baud });
 }
 
-/// Resolve the boot console from /chosen stdout-path and print the two things a
-/// PL011 driver needs from it: the MMIO base (reg) and reference clock. This is
-/// the groundwork for configuring the UART from the DTB instead of the bespoke
-/// mailbox clock setup in uart.zig.
-fn dumpConsole(dt: DeviceTree) !void {
-    const chosen = (try dt.nodeFromPath("/chosen")) orelse {
-        kprint.write("  no /chosen node\r", .{});
-        return;
-    };
-
-    // stdout-path = "<alias-or-path>:<options>" (e.g. "serial0:115200n8").
-    const stdout_path = blk: {
-        var it = try chosen.node.propertyIterator(dt, .{ .name = "stdout-path" });
-        const prop = (try it.next()) orelse {
-            kprint.write("  /chosen has no stdout-path\r", .{});
-            return;
-        };
-        break :blk prop.value.toString();
-    };
-
-    // Strip the ":115200n8" options; the head is an alias or absolute path.
-    const node_path = if (std.mem.indexOfScalar(u8, stdout_path, ':')) |i|
-        stdout_path[0..i]
-    else
-        stdout_path;
-
-    const con = (try dt.nodeFromPath(node_path)) orelse {
-        kprint.write("  stdout-path \"{s}\" did not resolve\r", .{stdout_path});
-        return;
-    };
-
-    kprint.write("  stdout-path = \"{s}\" -> {s}\r", .{ stdout_path, con.name });
-
-    // reg is interpreted in the *parent's* (soc) #address-cells/#size-cells.
-    const parent = (try con.node.parent(dt)) orelse return;
-    const addr_cells = (try parent.node.addressCells(dt)) orelse 2;
-    const size_cells = (try parent.node.sizeCells(dt)) orelse 1;
-
-    var reg_it = try con.node.propertyIterator(dt, .{ .name = "reg" });
-    if (try reg_it.next()) |reg_prop| {
-        var reg = try reg_prop.value.regIterator(addr_cells, size_cells);
-        if (reg.next()) |r| kprint.write("    base = 0x{x}, size = 0x{x}\r", .{ r.address, r.size });
-    }
-
-    if (try propU32(dt, con.node, "clock-frequency")) |hz| {
-        kprint.write("    clock-frequency = {} Hz\r", .{hz});
-    }
+fn attachConsoleDriver(fdt: DeviceTree) !void {
+    const config = try dt_console.discover(fdt);
+    attached_console = try Pl011.adopt(&early_console, config);
+    console.attachPl011(&attached_console);
+    kprint.write("console: adopted early PL011 at 0x{x}\r", .{config.physical_base});
 }
 
 /// First code executed in the higher half. Switching the stack pointer must be
@@ -135,10 +98,7 @@ fn dumpConsole(dt: DeviceTree) !void {
 /// frame — so this is a naked trampoline that sets the virtual SP and tail-calls
 /// init_arm.
 ///
-/// x0 holds whatever the bootloader left at reset, threaded down through
-/// boot1_phys -> enter_higher_half. We only touch x2/sp here, so it flows
-/// straight into init_arm's first argument. On raspi3b that value is NOT the
-/// DTB (see init_arm); on a generic armv8 board booted via EDK/EFI it will be.
+/// x0 is preserved as the platform boot argument while x2 establishes SP_EL1.
 export fn enter_virtual_addressing() callconv(.naked) noreturn {
     asm volatile (
         \\ adrp x2, __kernel_stack_top
@@ -164,53 +124,36 @@ export fn init_arm(boot_x0: usize) callconv(.c) noreturn {
     var i: usize = 0;
     while (i < count) : (i += 1) words[i] = 0;
 
-    const uart = @import("io/uart.zig");
-    uart.init();
-
-    // RASPI3B: the machine resets all cores to 0x0 and does NOT hand the DTB to
-    // the kernel in x0 (boot_x0 is just leftover reset state), so the device
-    // tree is loaded at a fixed physical address by build.zig's loader device
-    // and we read it from there.
-    //
-    // TODO(generic-armv8): once we boot a generic armv8 board via the EDK/EFI
-    // protocol, x0 *does* carry the DTB pointer — drop this override and use
-    // boot_x0 directly (it is already threaded down from the reset entry).
     _ = boot_x0;
-    const fdt_phys: usize = 0x3000000; // must match build.zig loader addr
+    const fdt_phys = build_options.fdt_phys;
 
-    // Parse the FDT. fromPtr validates the header (magic, version, block sizes),
-    // so a success already proves the blob is really there — no need for a manual
-    // magic check. fdt_phys is a *physical* address; read it through the
-    // higher-half map (PA + kernel_va_base), not the low identity VA. The FDT
-    // header is 8-byte aligned, which fromPtr requires.
+    // fromPtr validates the FDT header, version, and block sizes. fdt_phys is a
+    // physical address, so access it through the higher-half mapping. The FDT
+    // header is 8-byte aligned as required by the parser.
     const kernel_va_base: usize = 0xFFFF000000000000;
     const fdt_ptr: [*]align(8) const u8 = @ptrFromInt(fdt_phys + kernel_va_base);
 
-    if (DeviceTree.fromPtr(fdt_ptr)) |fdt| {
-        kprint.write("FDT @ 0x{x} ok (v{d}), nodes:\r", .{ fdt_phys, @intFromEnum(fdt.version) });
-        dumpFdtNodes(fdt) catch |err| {
-            kprint.write("  <node walk failed: {s}>\r", .{@errorName(err)});
-        };
+    const fdt = DeviceTree.fromPtr(fdt_ptr) catch exit();
+    const early_config = dt_console.discover(fdt) catch exit();
+    platform.prepareEarlyPl011(early_config.clock_hz) catch exit();
+    early_console = Pl011.create(early_config);
+    early_console.configure() catch exit();
+    console.attachPl011(&early_console);
 
-        kprint.write("memory nodes:\r", .{});
-        dumpMemoryNodes(fdt) catch |err| {
-            kprint.write("  <memory walk failed: {s}>\r", .{@errorName(err)});
-        };
+    kprint.write("FDT @ 0x{x} ok (v{d}), nodes:\r", .{ fdt_phys, @intFromEnum(fdt.version) });
+    dumpFdtNodes(fdt) catch |err| {
+        kprint.write("  <node walk failed: {s}>\r", .{@errorName(err)});
+    };
 
-        kprint.write("console:\r", .{});
-        dumpConsole(fdt) catch |err| {
-            kprint.write("  <console probe failed: {s}>\r", .{@errorName(err)});
-        };
-    } else |err| {
-        kprint.write("FDT @ 0x{x} parse error: {s}\r", .{ fdt_phys, @errorName(err) });
-    }
+    kprint.write("memory nodes:\r", .{});
+    dumpMemoryNodes(fdt) catch |err| {
+        kprint.write("  <memory walk failed: {s}>\r", .{@errorName(err)});
+    };
 
-    // Access our FDT
-    //
+    kprint.write("early console:\r", .{});
+    dumpConsole(early_config);
 
-    // Setup out proc0 structure
-    // Setup our thread context
-    // Setup uart console
+    attachConsoleDriver(fdt) catch exit();
 
     kmain();
 }

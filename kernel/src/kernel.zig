@@ -1,6 +1,5 @@
 // const builtin = @import("builtin");
 const kprint = @import("kprint.zig");
-const util = @import("arch/aarch64/util.zig");
 const arch_init = @import("arch/aarch64/arch_init.zig");
 const std = @import("std");
 const builtin = @import("std").builtin;
@@ -24,6 +23,8 @@ const vm = @import("vm.zig");
 const kernel_elf = @import("kernel_elf.zig");
 const ext2 = @import("ext2");
 const buffer_stream = @import("buffer_stream.zig");
+const build_options = @import("build_options");
+extern const __heap_start: u8;
 
 // Force the arch entry/exit glue (enter_virtual_addressing, exit) to be
 // compiled so its `export fn`s are emitted into the image.
@@ -36,7 +37,7 @@ export fn kmain() noreturn {
     kernel_elf.init() catch unreachable;
     vm.init();
 
-    kprint.write("JimZOS v{s}\r", .{util.Version});
+    kprint.write("JimZOS v0.1.1\r", .{});
 
     //test_crashes();
 
@@ -63,13 +64,13 @@ fn kmainInit() noreturn {
 
     // testCrashes();
 
-    const total_memory = 1024 * 1024 * 1024; //1GB
-    const memory_start = 0x000000000038e000 + 0x1000000; //__heap_phys_start; FIXME - relocation error when using symbol
-    const available_memory = total_memory - memory_start;
+    const va_base = 0xFFFF000000000000;
+    const memory_start = @intFromPtr(&__heap_start) - va_base;
+    const available_memory = build_options.ram_phys_end - memory_start;
     const page_count = available_memory / 4096; // page_size = 4096
 
     kprint.write("Pages\r", .{});
-    page.add_phys_pages(@ptrFromInt(memory_start), memory_start, page_count);
+    page.add_phys_pages(@ptrFromInt(memory_start + va_base), memory_start, page_count);
     // // page.dump(uart);
 
     // kprint.write("Create init thread\r", .{});
@@ -78,8 +79,7 @@ fn kmainInit() noreturn {
     // kprint.write("Swotcj\r", .{});
     // thread.switch_to(alt_thread);
 
-    const va_base = 0xFFFF000000000000;
-    const img_address = 0x2000000 + va_base;
+    const img_address = build_options.ext2_phys + va_base;
     const img_size = 0x040000;
 
     const img_start_ptr: [*]u8 = @ptrFromInt(img_address);
@@ -128,9 +128,8 @@ pub fn panic(msg: []const u8, error_return_trace: ?*builtin.StackTrace, size: ?u
 extern fn exit() noreturn;
 
 export fn exception_panic(esr_el1: u64, elr_el1: u64, spsr_el1: u64, far_el1: u64) noreturn {
-    
     @import("panic.zig").printGuru("Unhandled synchronous exception triggered");
-    
+
     kprint.write("esr_el1:  0x{x:0>16}\r", .{esr_el1});
     kprint.write("spsr_el1: 0x{x:0>16}\r", .{spsr_el1});
     kprint.write("far_el1:  0x{x:0>16}\r", .{far_el1});

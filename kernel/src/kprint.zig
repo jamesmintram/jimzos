@@ -1,3 +1,3 @@
-const uart = @import("arch/aarch64/io/uart.zig");
+const console = @import("console.zig");
 
-pub const write = uart.write;
+pub const write = console.write;

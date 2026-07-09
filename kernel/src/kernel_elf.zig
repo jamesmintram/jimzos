@@ -1,5 +1,6 @@
 const std = @import("std");
 const BufferStream = @import("buffer_stream.zig").BufferStream;
+const build_options = @import("build_options");
 
 pub const KernelElf = struct {
     stream: BufferStream,
@@ -8,7 +9,7 @@ pub const KernelElf = struct {
 
     fn load() !KernelElf {
         const va_base = 0xFFFF000000000000;
-        const elf_address = 0x1000000 + va_base;
+        const elf_address = build_options.kernel_elf_phys + va_base;
         const elf_size = 0x100000; //Fixme 4MB fixed size is hacky
 
         const elf_start_ptr: [*]u8 = @ptrFromInt(elf_address);
@@ -25,7 +26,7 @@ pub const KernelElf = struct {
     }
 };
 
-var kernel_elf : KernelElf = undefined;
+var kernel_elf: KernelElf = undefined;
 
 pub fn init() !void {
     kernel_elf = try KernelElf.load();

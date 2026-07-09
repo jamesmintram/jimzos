@@ -1,8 +1,6 @@
 const mmio = @import("io/mmio.zig");
 const mbox = @import("io/mbox.zig");
 const gpio = @import("io/gpio.zig");
-const uart = @import("io/uart.zig");
-
 const regs = @import("types/regs.zig");
 const Register = regs.Register;
 
@@ -14,9 +12,9 @@ pub fn hang() noreturn {
     while (true) {}
 }
 
-const PM_RSTC =  Register{ .ReadOnly = mmio.MMIO_BASE + 0x0010001C};
+const PM_RSTC = Register{ .ReadOnly = mmio.MMIO_BASE + 0x0010001C };
 const PM_RSTS = Register{ .ReadWrite = mmio.MMIO_BASE + 0x00100020 };
-const PM_WDOG =  Register{ .ReadOnly = mmio.MMIO_BASE + 0x00100024 };
+const PM_WDOG = Register{ .ReadOnly = mmio.MMIO_BASE + 0x00100024 };
 const PM_WDOG_MAGIC = @as(u32, 0x5A000000);
 const PM_RSTC_FULLRST = @as(u32, 0x00000020);
 
@@ -26,7 +24,7 @@ pub fn powerOff() void {
 
     while (r < 16) : (r += 1) {
         // Setup a mailbox call to power off each device
-        mbox.mbox[0] = 8*4;
+        mbox.mbox[0] = 8 * 4;
         mbox.mbox[1] = mbox.MBOX_REQUEST;
         mbox.mbox[2] = mbox.MBOX_TAG_SETPOWER;
         mbox.mbox[3] = 8;
@@ -77,10 +75,10 @@ pub fn reset() void {
 const RNG_CTRL = Register{ .ReadOnly = mmio.MMIO_BASE + 0x00104000 };
 const RNG_STATUS = Register{ .ReadWrite = mmio.MMIO_BASE + 0x00104004 };
 const RNG_DATA = Register{ .ReadOnly = mmio.MMIO_BASE + 0x00104008 };
-const RNG_INT_MASK = Register{ .WriteOnly =  mmio.MMIO_BASE + 0x00104010 };
+const RNG_INT_MASK = Register{ .WriteOnly = mmio.MMIO_BASE + 0x00104010 };
 
 /// Initialize the random number generator
-/// NOTE: Currently just assuming this works until I can test on real hardware.
+/// TODO: Validate this initialization sequence on real hardware.
 pub fn randInit() void {
     mmio.write(RNG_STATUS, 0x40000).?;
     var r = mmio.read(RNG_INT_MASK).?;
@@ -98,7 +96,7 @@ pub fn randInit() void {
 pub fn getRand(min: usize, max: usize) usize {
     if (min > max)
         return 0;
-    return ((mmio.read(RNG_DATA).?) % (max-min)) + min;
+    return ((mmio.read(RNG_DATA).?) % (max - min)) + min;
 }
 
 const SYSTMR_HI = Register{ .ReadOnly = mmio.MMIO_BASE + 0x00003004 };

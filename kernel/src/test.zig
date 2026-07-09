@@ -1,4 +1,4 @@
 comptime {
-    _ = @import("types/regs.zig");
-    _ = @import("io/uart.zig");
+    _ = @import("arch/aarch64/types/regs.zig");
+    _ = @import("drivers/serial/pl011.zig");
 }

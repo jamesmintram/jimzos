@@ -17,7 +17,8 @@ SECTIONS {
   __kernel_stack_guard_phys = __kernel_stack_guard - kernel_va_base;
   __heap_phys_start = __heap_start - kernel_va_base;
 
-  __page_tables_size = ((3 + 512) * 0x1000);
+  /* L0 + L1 + two L2 tables + 1024 L3 tables maps the first 2 GiB. */
+  __page_tables_size = ((4 + 1024) * 0x1000);
   __page_tables_phys_start = __page_tables_start - kernel_va_base;
   __page_tables_phys_end = __page_tables_phys_start + __page_tables_size;
 
@@ -25,11 +26,11 @@ SECTIONS {
   /* This is the bootstrap                          */
   /*------------------------------------------------*/
 
-  /* QEMU's raspi3b resets all cores to PC=0x0, so the reset stub (.text.entry)
-     MUST live at 0x0 — it is the reset vector, not just an ELF entry point. */
-  .boot.text 0x0 : {
+  .boot.entry kernel_load_base : {
     KEEP(*(.text.entry))
-    . = 0x80000;  /* Space for command line.  */
+  }
+
+  .boot.text (kernel_load_base + 0x80000) : {
     KEEP(*(.text.boot))
   }
 

@@ -2,21 +2,16 @@ const regs = @import("../types/regs.zig");
 
 const Register = regs.Register;
 
-/// Full system data memory barrier. Replaces the old `@fence(.SeqCst)` (the
-/// `@fence` builtin was removed) so MMIO accesses stay ordered on real hardware.
+/// Full-system data memory barrier that orders MMIO accesses on real hardware.
 inline fn barrier() void {
     asm volatile ("dmb sy" ::: .{ .memory = true });
 }
 
 /// Base address for the MMIO operations.
-pub const MMIO_BASE : u32 = 0x3F000000;
+pub const MMIO_BASE: u32 = 0x3F000000;
 
-// @TODO @PENDING-FIX: We should mark the register arguments below as compile time
-// and then use @compileError in the bad bracnhes to catch bad register types at
-// compile time. Currently, marking them as comptime causes the compiler to emit
-// the following error: "TODO const expr analyze union field value for equality".
-// It would allow us to elimiate the ?void return type as well, since the only
-// error would be caught at compile time.
+// TODO: Make register arguments comptime values so invalid access modes are
+// compile errors and these APIs do not need optional return values.
 
 /// Write data to a given MMIO register, returning null
 /// if the register had an incorrect type.
@@ -29,7 +24,7 @@ pub fn write(reg: Register, data: u32) ?void {
         },
         Register.ReadWrite => {
             @as(*volatile u32, @ptrFromInt(reg.ReadWrite)).* = data;
-        }
+        },
     }
 }
 
@@ -44,14 +39,14 @@ pub fn read(reg: Register) ?u32 {
         },
         Register.ReadWrite => {
             return @as(*volatile u32, @ptrFromInt(reg.ReadWrite)).*;
-        }
+        },
     }
 }
 
 /// Stall the CPU for a given number of cycles.
 pub fn wait(count: usize) void {
     var i: usize = 0;
-    while (i > count) : (i += 1) {
+    while (i < count) : (i += 1) {
         // Marked as volatile so the optimizer doesn't optimize it away
         asm volatile ("mov w0, w0");
     }

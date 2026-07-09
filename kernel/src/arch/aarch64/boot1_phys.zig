@@ -5,6 +5,7 @@
 const regs = @import("types/regs.zig");
 const processor = @import("processor.zig");
 const asm64 = @import("asm.zig");
+const build_options = @import("build_options");
 
 /// Load absolute linker-symbol values without going through the higher-half
 /// GOT, which is out of ADRP range while this code executes at low addresses.
@@ -26,16 +27,23 @@ inline fn kernelStackGuardPhys() usize {
     );
 }
 
+inline fn bootStackPhys() usize {
+    return asm volatile ("ldr %[value], =__boot_phys_stack"
+        : [value] "=r" (-> usize),
+    );
+}
+
 // --- Page-table geometry (4 KiB granule, 4-level walk) ---------------------
 // Pool layout, which must match linker.ld's
-//   __page_tables_size = ((3 + 512) * 0x1000)
-//   table[0]       L0 / PGD
-//   table[1]       L1 / PUD
-//   table[2]       L2 / PMD
-//   table[3..515)  L3 / PTE  (512 contiguous leaf tables)
+//   table[0]        L0 / PGD
+//   table[1]        L1 / PUD
+//   table[2..4)     L2 / PMD (one per GiB)
+//   table[4..1028)  L3 / PTE (1024 contiguous leaf tables)
 const TABLE_SIZE: usize = 0x1000;
 const ENTRIES_PER_TABLE: usize = 512;
 const SECTION_SIZE: usize = 0x1000; // each L3 entry maps one 4 KiB page
+const L2_TABLE_COUNT: usize = 2;
+const FIRST_L3_TABLE: usize = 2 + L2_TABLE_COUNT;
 
 // --- Descriptor bits (mirror consts.h) -------------------------------------
 const DESC_VALID: usize = 0b11; //  valid + table descriptor (L0-L2) / page descriptor (L3)
@@ -45,10 +53,19 @@ const PT_ISH: usize = 3 << 8; //    inner shareable
 const PT_MEM: usize = 0 << 2; //    AttrIndx 0 -> MAIR Attr0 (normal write-back)
 const PT_DEV: usize = 1 << 2; //    AttrIndx 1 -> MAIR Attr1 (device)
 
-// --- Physical address map (Raspberry Pi 3) ---------------------------------
-const RAM_TOP: usize = 0x3EFFFFFF; //   top of normal cacheable RAM
-const MMIO_BASE: usize = 0x3F000000; // peripheral / MMIO window
-const MMIO_TOP: usize = 0x3FFFFFFF; //  top of MMIO
+const AddressRange = struct {
+    start: usize,
+    end: usize,
+};
+
+const ram = switch (build_options.platform) {
+    .raspi3 => AddressRange{ .start = 0x00000000, .end = 0x3effffff },
+    .virt => AddressRange{ .start = 0x40000000, .end = 0x7fffffff },
+};
+const device = switch (build_options.platform) {
+    .raspi3 => AddressRange{ .start = 0x3f000000, .end = 0x3fffffff },
+    .virt => AddressRange{ .start = 0x00000000, .end = 0x3fffffff },
+};
 
 /// Build one set of page tables that identity-maps all of physical memory.
 ///
@@ -76,38 +93,35 @@ fn build_identity_map() linksection(".text.boot") void {
     // L0 (PGD)[0] -> L1 (PUD) table
     tables[0] = (pt_base + TABLE_SIZE) | DESC_VALID;
 
-    // L1 (PUD)[0] -> L2 (PMD) table
+    // L1 (PUD)[0..2) -> the two L2 (PMD) tables.
     const pud = tables + ENTRIES_PER_TABLE;
-    pud[0] = (pt_base + 2 * TABLE_SIZE) | DESC_VALID;
-
-    // L2 (PMD)[0..512) -> the 512 contiguous L3 (PTE) tables
-    const pmd = tables + 2 * ENTRIES_PER_TABLE;
-    var pte_table = pt_base + 3 * TABLE_SIZE;
     i = 0;
-    while (i < ENTRIES_PER_TABLE) : (i += 1) {
+    while (i < L2_TABLE_COUNT) : (i += 1) {
+        pud[i] = (pt_base + (2 + i) * TABLE_SIZE) | DESC_VALID;
+    }
+
+    // Each L2 table points at 512 L3 tables, mapping one GiB.
+    const pmd = tables + 2 * ENTRIES_PER_TABLE;
+    var pte_table = pt_base + FIRST_L3_TABLE * TABLE_SIZE;
+    i = 0;
+    while (i < L2_TABLE_COUNT * ENTRIES_PER_TABLE) : (i += 1) {
         pmd[i] = pte_table | DESC_VALID;
         pte_table += TABLE_SIZE;
     }
 
-    // L3 (PTE): identity-map every 4 KiB page. The 512 PTE tables are laid out
-    // contiguously, so we can address them as one flat array.
-    const pte = tables + 3 * ENTRIES_PER_TABLE;
-    var idx: usize = 0;
+    // The L3 tables are contiguous, so the index is simply PA / page size.
+    const pte = tables + FIRST_L3_TABLE * ENTRIES_PER_TABLE;
 
-    // Normal cacheable RAM: 0x0 .. RAM_TOP (inner shareable, MAIR idx 0).
     const ram_flags = DESC_VALID | MM_ACCESS | PT_ISH | PT_MEM;
-    var phys: usize = 0;
-    while (phys <= RAM_TOP) : (phys += SECTION_SIZE) {
-        pte[idx] = phys | ram_flags;
-        idx += 1;
+    var phys = ram.start;
+    while (phys <= ram.end) : (phys += SECTION_SIZE) {
+        pte[phys / SECTION_SIZE] = phys | ram_flags;
     }
 
-    // Device / MMIO: MMIO_BASE .. MMIO_TOP (outer shareable, MAIR idx 1).
     const dev_flags = DESC_VALID | MM_ACCESS | PT_OSH | PT_DEV;
-    phys = MMIO_BASE;
-    while (phys <= MMIO_TOP) : (phys += SECTION_SIZE) {
-        pte[idx] = phys | dev_flags;
-        idx += 1;
+    phys = device.start;
+    while (phys <= device.end) : (phys += SECTION_SIZE) {
+        pte[phys / SECTION_SIZE] = phys | dev_flags;
     }
 
     // Punch a hole for the kernel stack guard page: clear its leaf entry so an
@@ -202,8 +216,7 @@ fn drop_to_el1() linksection(".text.boot") void {
     };
     regs.HCR_EL2.write(hcr_el2);
 
-    // Set up initial exception stack
-    regs.SP_EL1.write(0x40000);
+    regs.SP_EL1.write(bootStackPhys());
 
     const spsr_el2 = regs.SPSR_EL2{
         .A = 1, //
