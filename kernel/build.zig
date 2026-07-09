@@ -1,9 +1,5 @@
 const std = @import("std");
 
-// context.S consumes the committed `struct_defs_*.h` offsets. Keep those
-// headers synchronized with Thread and CPUFrame; Thread also has compile-time
-// layout assertions in thread.zig.
-
 pub fn build(b: *std.Build) void {
     const Platform = enum { raspi3, virt };
     const PlatformConfig = struct {
@@ -69,6 +65,24 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const thread_layout_mod = b.createModule(.{
+        .root_source_file = b.path("src/thread.zig"),
+        .target = b.graph.host,
+        .optimize = optimize,
+    });
+    const asm_offsets_generator_mod = b.createModule(.{
+        .root_source_file = b.path("tools/generate_asm_offsets.zig"),
+        .target = b.graph.host,
+        .optimize = optimize,
+    });
+    asm_offsets_generator_mod.addImport("thread_layout", thread_layout_mod);
+    const asm_offsets_generator = b.addExecutable(.{
+        .name = "generate_asm_offsets",
+        .root_module = asm_offsets_generator_mod,
+    });
+    const run_asm_offsets_generator = b.addRunArtifact(asm_offsets_generator);
+    const asm_offsets_header = run_asm_offsets_generator.addOutputFileArg("asm_offsets.h");
+
     // boot1_phys (the physical, MMU-off bring-up) is built as its own static
     // library so it gets its own root source file (linksection(".text.boot")
     // entry point).
@@ -103,6 +117,7 @@ pub fn build(b: *std.Build) void {
     exe_mod.addOptions("build_options", build_options);
     exe_mod.addImport("ext2", ext2_mod);
     exe_mod.addImport("phys_range", phys_range_mod);
+    exe_mod.addIncludePath(asm_offsets_header.dirname());
 
     exe_mod.addAssemblyFile(b.path("src/arch/aarch64/boot0_entry.S"));
     exe_mod.addAssemblyFile(b.path("src/arch/aarch64/exception.S"));

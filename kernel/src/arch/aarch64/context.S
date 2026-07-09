@@ -1,6 +1,5 @@
 
-#include "struct_defs_Thread.h"
-#include "struct_defs_CPUFrame.h"
+#include "asm_offsets.h"
 
 .macro	ctx_switch_save_registers el
 	sub	sp, sp, #(CPUFrame__size)
@@ -109,4 +108,3 @@ _ctx_switch_to:
   ctx_switch_restore_registers
 
   ret
-  

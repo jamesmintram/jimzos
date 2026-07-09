@@ -3,14 +3,7 @@ const process = @import("proc.zig");
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-pub const CPUFrame = extern struct {
-    tf_sp: u64 align(1), //0
-    tf_lr: u64 align(1), //8
-    tf_elr: u64 align(1), //16
-    tf_spsr: u32 align(1), //24
-    tf_esr: u32 align(1), //28
-    tf_x: [30]u64 align(1), //32
-};
+pub const CPUFrame = @import("arch/aarch64/types/cpu_frame.zig").CPUFrame;
 
 pub const Thread = extern struct {
     next: ?*Thread,
@@ -26,19 +19,6 @@ pub const Thread = extern struct {
     // Alignment better done some other way?
     kernel_stack: [4096]u8 align(16),
 };
-
-comptime {
-    if (@offsetOf(Thread, "next") != 0 or
-        @offsetOf(Thread, "prev") != 8 or
-        @offsetOf(Thread, "proc") != 16 or
-        @offsetOf(Thread, "tid") != 24 or
-        @offsetOf(Thread, "stack_pointer") != 32 or
-        @offsetOf(Thread, "kernel_stack") != 48 or
-        @sizeOf(Thread) != 4144)
-    {
-        @compileError("Thread layout no longer matches struct_defs_Thread.h");
-    }
-}
 
 pub fn create_default_thread(allocator: *Allocator, parent: *process.Process) !*Thread {
     const newThread = try allocator.create(Thread);

@@ -52,7 +52,7 @@ const ENTRIES_PER_TABLE: usize = 512;
 const PAGE_SIZE: usize = 0x1000;
 const TABLE_ADDRESS_MASK: usize = 0x0000fffffffff000;
 
-// --- Descriptor bits (mirror consts.h) -------------------------------------
+// --- Descriptor bits --------------------------------------------------------
 const DESC_VALID: usize = 0b11; //  valid + table descriptor (L0-L2) / page descriptor (L3)
 const MM_ACCESS: usize = 1 << 10; // Access Flag (AF); without it the first access faults
 const PT_OSH: usize = 2 << 8; //    outer shareable
