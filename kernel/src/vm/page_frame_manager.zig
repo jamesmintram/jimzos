@@ -8,8 +8,7 @@ const assert = std.debug.assert;
 // `std.mem.page_size` was removed; this kernel uses a fixed 4 KiB page.
 const page_size = 4096;
 
-extern const __heap_start: usize;
-extern const __heap_phys_start: *usize;
+extern const __heap_start: u8;
 
 pub const BumpAllocator = struct {
     addr: usize,
@@ -17,7 +16,7 @@ pub const BumpAllocator = struct {
     const Self = @This();
 
     pub fn init() Self {
-        return Self{ .addr = 0xffff000002000000 };
+        return Self{ .addr = @intFromPtr(&__heap_start) };
     }
 
     pub fn allocator(self: *BumpAllocator) Allocator {
