@@ -9,8 +9,10 @@ pub fn build(b: *std.Build) void {
     const PlatformConfig = struct {
         fdt_phys: usize,
         kernel_elf_phys: usize,
+        kernel_elf_reserved_size: usize,
         ext2_phys: usize,
-        ram_phys_end: usize,
+        ext2_reserved_size: usize,
+        ext2_used_size: usize,
         dts: ?[]const u8,
         linker_script: []const u8,
     };
@@ -21,16 +23,20 @@ pub fn build(b: *std.Build) void {
         .raspi3 => .{
             .fdt_phys = @as(usize, 0x03000000),
             .kernel_elf_phys = @as(usize, 0x01000000),
+            .kernel_elf_reserved_size = @as(usize, 0x00400000),
             .ext2_phys = @as(usize, 0x02000000),
-            .ram_phys_end = @as(usize, 0x3f000000),
+            .ext2_reserved_size = @as(usize, 0x00040000),
+            .ext2_used_size = @as(usize, 0x00010000),
             .dts = "../dts/jimzos.dts",
             .linker_script = "src/arch/aarch64/linker_raspi3.ld",
         },
         .virt => .{
             .fdt_phys = @as(usize, 0x40000000),
             .kernel_elf_phys = @as(usize, 0x4f000000),
+            .kernel_elf_reserved_size = @as(usize, 0x00400000),
             .ext2_phys = @as(usize, 0x50000000),
-            .ram_phys_end = @as(usize, 0x80000000),
+            .ext2_reserved_size = @as(usize, 0x00040000),
+            .ext2_used_size = @as(usize, 0x00010000),
             .dts = null,
             .linker_script = "src/arch/aarch64/linker_virt.ld",
         },
@@ -41,8 +47,10 @@ pub fn build(b: *std.Build) void {
     build_options.addOption(Platform, "platform", platform);
     build_options.addOption(usize, "fdt_phys", platform_config.fdt_phys);
     build_options.addOption(usize, "kernel_elf_phys", platform_config.kernel_elf_phys);
+    build_options.addOption(usize, "kernel_elf_reserved_size", platform_config.kernel_elf_reserved_size);
     build_options.addOption(usize, "ext2_phys", platform_config.ext2_phys);
-    build_options.addOption(usize, "ram_phys_end", platform_config.ram_phys_end);
+    build_options.addOption(usize, "ext2_reserved_size", platform_config.ext2_reserved_size);
+    build_options.addOption(usize, "ext2_used_size", platform_config.ext2_used_size);
 
     // Freestanding aarch64 with FP/SIMD disabled (the -mgeneral-regs-only
     // equivalent). Kernel code is integer-only — like Linux/BSD, the kernel
@@ -97,6 +105,21 @@ pub fn build(b: *std.Build) void {
 
     const devicetree_dep = b.dependency("devicetree", .{});
     exe_mod.addImport("DeviceTree", devicetree_dep.module("DeviceTree"));
+
+    const run_test_dtc = b.addSystemCommand(&.{ "dtc", "-I", "dts", "-O", "dtb", "-o" });
+    const memory_test_dtb = run_test_dtc.addOutputFileArg("memory-test.dtb");
+    run_test_dtc.addFileArg(b.path("../dts/memory-test.dts"));
+    const memory_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/memory_test.zig"),
+        .target = b.graph.host,
+        .optimize = optimize,
+    });
+    memory_test_mod.addImport("DeviceTree", devicetree_dep.module("DeviceTree"));
+    memory_test_mod.addAnonymousImport("memory_test_dtb", .{ .root_source_file = memory_test_dtb });
+    const memory_tests = b.addTest(.{ .root_module = memory_test_mod });
+    const run_memory_tests = b.addRunArtifact(memory_tests);
+    const test_step = b.step("test", "Run memory-map unit tests");
+    test_step.dependOn(&run_memory_tests.step);
 
     const exe = b.addExecutable(.{
         .name = "kernel8.elf",

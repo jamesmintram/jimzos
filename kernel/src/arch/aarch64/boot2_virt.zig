@@ -2,12 +2,16 @@
 // boot1_phys.zig branches to `enter_virtual_addressing` once the MMU is on, so
 // this code runs in the higher half.
 
-extern fn kmain() callconv(.c) noreturn;
+const BootInfo = @import("../../boot/boot_info.zig").BootInfo;
+
+extern fn kmain(boot_info: *const BootInfo) callconv(.c) noreturn;
 
 // Linker-script symbols (see linker.ld). 16-byte aligned; only their addresses
 // are used.
 extern var __bss_start: u8;
 extern var __bss_end: u8;
+extern const __kernel_phys_start: u8;
+extern const __kernel_phys_end: u8;
 
 const std = @import("std");
 const kprint = @import("../../kprint.zig");
@@ -16,9 +20,13 @@ const build_options = @import("build_options");
 const dt_console = @import("device_tree_console.zig");
 const platform = @import("platform.zig");
 const Pl011 = @import("../../drivers/serial/pl011.zig").Pl011;
+const boot = @import("../../boot/boot_info.zig");
+const fdt_boot = @import("../../boot/fdt_boot.zig");
+const vm = @import("../../vm.zig");
 
 var early_console: Pl011 = undefined;
 var attached_console: Pl011 = undefined;
+var boot_info_storage: BootInfo = undefined;
 
 /// Print the full path of every node in the device tree, root first then all
 /// descendants in tree order (nodeIterator walks root's children, so root `/`
@@ -92,6 +100,61 @@ fn attachConsoleDriver(fdt: DeviceTree) !void {
     kprint.write("console: adopted early PL011 at 0x{x}\r", .{config.physical_base});
 }
 
+fn finishBootInfo(mut_builder: boot.Builder) !BootInfo {
+    var builder = mut_builder;
+    try builder.addReservation(.{
+        .start = @intFromPtr(&__kernel_phys_start),
+        .end = @intFromPtr(&__kernel_phys_end),
+    }, .kernel, false, false);
+    try builder.addReservation(
+        try boot.PhysRange.fromStartSize(builder.fdt.physical_address, builder.fdt.size),
+        .fdt,
+        false,
+        false,
+    );
+    try builder.addModule(.{
+        .range = try boot.PhysRange.fromStartSize(
+            build_options.kernel_elf_phys,
+            build_options.kernel_elf_reserved_size,
+        ),
+        .used_size = build_options.kernel_elf_reserved_size,
+        .kind = .kernel_elf,
+    });
+    try builder.addModule(.{
+        .range = try boot.PhysRange.fromStartSize(
+            build_options.ext2_phys,
+            build_options.ext2_reserved_size,
+        ),
+        .used_size = build_options.ext2_used_size,
+        .kind = .filesystem,
+    });
+    try builder.normalize();
+    try vm.reserveMetadata(&builder);
+    return builder.finalize();
+}
+
+fn dumpBootInfo(info: *const BootInfo) void {
+    kprint.write("boot memory: {} MiB reported, {} MiB usable\r", .{
+        info.totalMemoryBytes() / (1024 * 1024),
+        info.totalUsableBytes() / (1024 * 1024),
+    });
+    for (info.memory.constSlice()) |range| {
+        kprint.write("  RAM  [0x{x}, 0x{x})\r", .{ range.start, range.end });
+    }
+    for (info.reserved.constSlice()) |reservation| {
+        kprint.write("  RSV  [0x{x}, 0x{x}) {s}{s}\r", .{
+            reservation.range.start,
+            reservation.range.end,
+            @tagName(reservation.kind),
+            if (reservation.no_map) " no-map" else "",
+        });
+    }
+    for (info.usable.constSlice()) |range| {
+        kprint.write("  FREE [0x{x}, 0x{x})\r", .{ range.start, range.end });
+    }
+    kprint.write("boot CPUs: {}, boot id 0x{x}\r", .{ info.cpus.len, info.boot_cpu_id });
+}
+
 /// First code executed in the higher half. Switching the stack pointer must be
 /// done in asm — changing SP inside a normal function would invalidate its
 /// frame — so this is a naked trampoline that sets the virtual SP and tail-calls
@@ -126,13 +189,9 @@ export fn init_arm(boot_x0: usize) callconv(.c) noreturn {
     _ = boot_x0;
     const fdt_phys = build_options.fdt_phys;
 
-    // fromPtr validates the FDT header, version, and block sizes. fdt_phys is a
-    // physical address, so access it through the higher-half mapping. The FDT
-    // header is 8-byte aligned as required by the parser.
-    const kernel_va_base: usize = 0xFFFF000000000000;
-    const fdt_ptr: [*]align(8) const u8 = @ptrFromInt(fdt_phys + kernel_va_base);
-
-    const fdt = DeviceTree.fromPtr(fdt_ptr) catch exit();
+    const builder = fdt_boot.discover(fdt_phys) catch exit();
+    const fdt = builder.fdt.tree;
+    boot_info_storage = finishBootInfo(builder) catch exit();
     const early_config = dt_console.discover(fdt) catch exit();
     platform.prepareEarlyPl011(early_config.clock_hz) catch exit();
     early_console = Pl011.create(early_config);
@@ -152,9 +211,13 @@ export fn init_arm(boot_x0: usize) callconv(.c) noreturn {
     kprint.write("early console:\r", .{});
     dumpConsole(early_config);
 
+    dumpBootInfo(&boot_info_storage);
+
+    vm.init(&boot_info_storage) catch exit();
+
     attachConsoleDriver(fdt) catch exit();
 
-    kmain();
+    kmain(&boot_info_storage);
 }
 
 /// Terminate via the Arm semihosting SYS_EXIT call (used under QEMU). Declared

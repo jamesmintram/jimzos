@@ -10,7 +10,7 @@ pub const KernelElf = struct {
     fn load() !KernelElf {
         const va_base = 0xFFFF000000000000;
         const elf_address = build_options.kernel_elf_phys + va_base;
-        const elf_size = 0x100000; //Fixme 4MB fixed size is hacky
+        const elf_size = build_options.kernel_elf_reserved_size;
 
         const elf_start_ptr: [*]u8 = @ptrFromInt(elf_address);
         const elf_slice = elf_start_ptr[0..elf_size];

@@ -13,9 +13,6 @@ const thread = @import("thread.zig");
 const mem = std.mem;
 const Allocator = mem.Allocator;
 
-// const BumpAllocator = @import("vm/page_frame_manager.zig").BumpAllocator;
-const page = @import("vm/page.zig");
-
 // Alloc/Free to work?
 // Process ping pong
 // Verifies that the adjusted length will still map to the full length
@@ -24,7 +21,7 @@ const kernel_elf = @import("kernel_elf.zig");
 const ext2 = @import("ext2");
 const buffer_stream = @import("buffer_stream.zig");
 const build_options = @import("build_options");
-extern const __heap_start: u8;
+const BootInfo = @import("boot/boot_info.zig").BootInfo;
 
 // Force the arch entry/exit glue (enter_virtual_addressing, exit) to be
 // compiled so its `export fn`s are emitted into the image.
@@ -32,17 +29,24 @@ comptime {
     _ = @import("arch/aarch64/boot2_virt.zig");
 }
 
-export fn kmain() noreturn {
+export fn kmain(boot_info: *const BootInfo) noreturn {
     arch_init.init();
     kernel_elf.init() catch unreachable;
-    vm.init();
 
-    kprint.write("JimZOS v0.1.1\r", .{});
+    kprint.write("JimZOS v0.1.1 ({} described CPUs)\r", .{boot_info.cpus.len});
+    const allocator_stats = vm.get_page_frame_manager().stats();
+    kprint.write("allocator: {} usable pages, {} free\r", .{
+        allocator_stats.usable_pages,
+        allocator_stats.free_pages,
+    });
 
     //test_crashes();
 
     // Get inside a thread context ASAP
     var allocator = vm.get_page_frame_manager().allocator();
+    const allocator_probe = allocator.alloc(u8, 4097) catch unreachable;
+    @memset(allocator_probe, 0xa5);
+    allocator.free(allocator_probe);
     const init_thread = thread.create_initial_thread(&allocator, kmainInit) catch unreachable;
     thread.switch_to_initial(init_thread);
 
@@ -64,23 +68,14 @@ fn kmainInit() noreturn {
 
     // testCrashes();
 
-    const va_base = 0xFFFF000000000000;
-    const memory_start = @intFromPtr(&__heap_start) - va_base;
-    const available_memory = build_options.ram_phys_end - memory_start;
-    const page_count = available_memory / 4096; // page_size = 4096
-
-    kprint.write("Pages\r", .{});
-    page.add_phys_pages(@ptrFromInt(memory_start + va_base), memory_start, page_count);
-    // // page.dump(uart);
-
     // kprint.write("Create init thread\r", .{});
     // var alt_thread = thread.create_initial_thread(&vm.get_page_frame_manager().allocator, kmainAlt) catch unreachable;
 
     // kprint.write("Swotcj\r", .{});
     // thread.switch_to(alt_thread);
 
-    const img_address = build_options.ext2_phys + va_base;
-    const img_size = 0x040000;
+    const img_address = build_options.ext2_phys + 0xFFFF000000000000;
+    const img_size = build_options.ext2_used_size;
 
     const img_start_ptr: [*]u8 = @ptrFromInt(img_address);
     const img_slice = img_start_ptr[0..img_size];

@@ -6,6 +6,7 @@ SECTIONS {
 
   kps_less1 = kernel_page_size -1;
   kernel_physical_start = (boot_end + kps_less1) & ~(kps_less1);
+  __kernel_phys_start = kernel_load_base;
 
   kernel_first_page = kernel_va_base + kernel_physical_start;
 
@@ -94,4 +95,5 @@ SECTIONS {
   __page_tables_end = .;
 
   __heap_start = .;
+  __kernel_phys_end = __heap_phys_start;
 }
