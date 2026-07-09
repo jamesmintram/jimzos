@@ -1,6 +1,6 @@
 const std = @import("std");
 const DeviceTree = @import("DeviceTree");
-const Config = @import("../../drivers/serial/pl011.zig").Config;
+const Config = @import("pl011.zig").Config;
 const MmioRegion = @import("../../io/mmio_region.zig").MmioRegion;
 
 pub fn discover(dt: DeviceTree) !Config {

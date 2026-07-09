@@ -1,8 +1,8 @@
 const std = @import("std");
-const boot = @import("../../boot/boot_info.zig");
+const boot = @import("../../../boot/boot_info.zig");
 const phys = @import("phys_range");
-const PhysicalAllocator = @import("../../vm/page_frame_manager.zig").PhysicalAllocator;
-const bootstrap_mapper = @import("bootstrap_mapper.zig");
+const PhysicalAllocator = @import("../../../vm/page_frame_manager.zig").PhysicalAllocator;
+const transition_mapper = @import("transition_mapper.zig");
 
 const kernel_va_base: u64 = 0xffff000000000000;
 const entries_per_table = 512;
@@ -77,7 +77,7 @@ const Mapper = struct {
 
     fn allocateTable(self: *Mapper) !u64 {
         const table_phys = self.allocator.allocatePages(1) orelse return error.OutOfPageTableMemory;
-        try bootstrap_mapper.mapTemporaryNormal(.{
+        try transition_mapper.mapTemporaryNormal(.{
             .start = table_phys,
             .end = table_phys + page_size,
         });
