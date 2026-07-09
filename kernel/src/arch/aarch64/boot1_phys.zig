@@ -4,10 +4,9 @@
 
 const regs = @import("types/regs.zig");
 const page_table = @import("types/page_table.zig");
-const processor = @import("processor.zig");
 const asm64 = @import("asm.zig");
 const build_options = @import("build_options");
-const platform = @import("platform.zig");
+const platform_bootstrap = @import("platform/bootstrap.zig");
 
 /// Load absolute linker-symbol values without going through the higher-half
 /// GOT, which is out of ADRP range while this code executes at low addresses.
@@ -106,14 +105,20 @@ inline fn mapEarlyDevices(root_phys: usize, arena: *TableArena) void {
         page_table.access_flag |
         page_table.outer_shareable |
         page_table.attr_index_device;
-    inline for (0..platform.bootstrap_device_range_count) |index| {
-        const range = platform.bootstrapDeviceRange(index);
-        mapRange(root_phys, @intCast(range.start), @intCast(range.end), flags, arena);
+    inline for (platform_bootstrap.device_ranges) |maybe_range| {
+        if (maybe_range) |range| {
+            mapRange(root_phys, @intCast(range.start), @intCast(range.end), flags, arena);
+        }
     }
 }
 
 inline fn hangBoot() noreturn {
     while (true) asm volatile ("wfe");
+}
+
+inline fn synchronize() void {
+    asm volatile ("dsb ish");
+    asm volatile ("isb");
 }
 
 /// Build a deliberately small temporary map. The same root is used for TTBR0
@@ -178,7 +183,7 @@ fn activate_mmu() linksection(".text.boot") void {
 
     // Ensure the table writes and the system-register setup are visible before
     // the MMU starts walking.
-    processor.processor.flush();
+    synchronize();
 
     var sctlr_el1 = regs.SCTLR_EL1.read();
     sctlr_el1.M = 1; // MMU enable
@@ -187,7 +192,7 @@ fn activate_mmu() linksection(".text.boot") void {
     regs.SCTLR_EL1.write(sctlr_el1);
 
     // Synchronise so the following instructions execute translated.
-    processor.processor.flush();
+    synchronize();
 }
 
 fn drop_to_el2() linksection(".text.boot") void {

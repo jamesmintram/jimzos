@@ -1,12 +1,6 @@
-const PhysRange = @import("phys_range").PhysRange;
 const gpio = @import("io/gpio.zig");
 const mbox = @import("io/mbox.zig");
 const mmio = @import("io/mmio.zig");
-
-pub const bootstrap_device_ranges = [_]PhysRange{
-    .{ .start = 0x3f00b000, .end = 0x3f00c000 }, // VideoCore mailbox
-    .{ .start = 0x3f200000, .end = 0x3f202000 }, // GPIO and PL011
-};
 
 pub fn prepareEarlyPl011(clock_hz: u32) !void {
     mbox.mbox[0] = 9 * 4;
