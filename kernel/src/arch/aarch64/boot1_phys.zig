@@ -3,6 +3,7 @@
 // -> enter_virtual_addressing) once running in the higher half.
 
 const regs = @import("types/regs.zig");
+const page_table = @import("types/page_table.zig");
 const processor = @import("processor.zig");
 const asm64 = @import("asm.zig");
 const build_options = @import("build_options");
@@ -46,59 +47,48 @@ inline fn kernelPhysEnd() usize {
     );
 }
 
-// --- Page-table geometry (4 KiB granule, 4-level walk) ---------------------
-const TABLE_SIZE: usize = 0x1000;
-const ENTRIES_PER_TABLE: usize = 512;
-const PAGE_SIZE: usize = 0x1000;
-const TABLE_ADDRESS_MASK: usize = 0x0000fffffffff000;
-
-// --- Descriptor bits --------------------------------------------------------
-const DESC_VALID: usize = 0b11; //  valid + table descriptor (L0-L2) / page descriptor (L3)
-const MM_ACCESS: usize = 1 << 10; // Access Flag (AF); without it the first access faults
-const PT_OSH: usize = 2 << 8; //    outer shareable
-const PT_ISH: usize = 3 << 8; //    inner shareable
-const PT_MEM: usize = 0 << 2; //    AttrIndx 0 -> MAIR Attr0 (normal write-back)
-const PT_DEV: usize = 1 << 2; //    AttrIndx 1 -> MAIR Attr1 (device)
-
 const TableArena = struct {
     next: usize,
     end: usize,
 
     inline fn allocate(self: *TableArena) usize {
-        if (self.next + TABLE_SIZE > self.end) hangBoot();
+        if (self.next + page_table.table_size > self.end) hangBoot();
         const physical = self.next;
-        self.next += TABLE_SIZE;
-        const table: [*]volatile usize = @ptrFromInt(physical);
+        self.next += page_table.table_size;
+        const table: [*]volatile page_table.Entry = @ptrFromInt(physical);
         var i: usize = 0;
-        while (i < ENTRIES_PER_TABLE) : (i += 1) table[i] = 0;
+        while (i < page_table.entries_per_table) : (i += 1) table[i] = 0;
         return physical;
     }
 };
 
-inline fn tableAt(physical: usize) [*]volatile usize {
+inline fn tableAt(physical: usize) [*]volatile page_table.Entry {
     return @ptrFromInt(physical);
 }
 
 inline fn ensureNext(parent_phys: usize, index: usize, arena: *TableArena) usize {
     const parent = tableAt(parent_phys);
-    if ((parent[index] & DESC_VALID) != 0) return parent[index] & TABLE_ADDRESS_MASK;
+    if ((parent[index] & page_table.descriptor_table_or_page) != 0) {
+        return @intCast(parent[index] & page_table.table_address_mask);
+    }
     const child = arena.allocate();
-    parent[index] = child | DESC_VALID;
+    parent[index] = @as(page_table.Entry, @intCast(child)) | page_table.descriptor_table_or_page;
     return child;
 }
 
-inline fn mapPage(root_phys: usize, physical: usize, flags: usize, arena: *TableArena) void {
-    const l1_phys = ensureNext(root_phys, (physical >> 39) & 0x1ff, arena);
-    const l2_phys = ensureNext(l1_phys, (physical >> 30) & 0x1ff, arena);
-    const l3_phys = ensureNext(l2_phys, (physical >> 21) & 0x1ff, arena);
+inline fn mapPage(root_phys: usize, physical: usize, flags: page_table.Entry, arena: *TableArena) void {
+    const l1_phys = ensureNext(root_phys, (physical >> page_table.level_0_shift) & page_table.index_mask, arena);
+    const l2_phys = ensureNext(l1_phys, (physical >> page_table.level_1_shift) & page_table.index_mask, arena);
+    const l3_phys = ensureNext(l2_phys, (physical >> page_table.level_2_shift) & page_table.index_mask, arena);
     const l3 = tableAt(l3_phys);
-    l3[(physical >> 12) & 0x1ff] = physical | flags;
+    l3[(physical >> page_table.level_3_shift) & page_table.index_mask] =
+        @as(page_table.Entry, @intCast(physical)) | flags;
 }
 
-inline fn mapRange(root_phys: usize, start: usize, end: usize, flags: usize, arena: *TableArena) void {
-    var physical = start & ~(PAGE_SIZE - 1);
-    const aligned_end = (end + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
-    while (physical < aligned_end) : (physical += PAGE_SIZE) {
+inline fn mapRange(root_phys: usize, start: usize, end: usize, flags: page_table.Entry, arena: *TableArena) void {
+    var physical = start & ~(page_table.page_size - 1);
+    const aligned_end = (end + page_table.page_size - 1) & ~(page_table.page_size - 1);
+    while (physical < aligned_end) : (physical += page_table.page_size) {
         if (physical != kernelStackGuardPhys()) mapPage(root_phys, physical, flags, arena);
     }
 }
@@ -112,7 +102,10 @@ inline fn readFdtSize() usize {
 }
 
 inline fn mapEarlyDevices(root_phys: usize, arena: *TableArena) void {
-    const flags = DESC_VALID | MM_ACCESS | PT_OSH | PT_DEV;
+    const flags = page_table.descriptor_table_or_page |
+        page_table.access_flag |
+        page_table.outer_shareable |
+        page_table.attr_index_device;
     inline for (0..platform.bootstrap_device_range_count) |index| {
         const range = platform.bootstrapDeviceRange(index);
         mapRange(root_phys, @intCast(range.start), @intCast(range.end), flags, arena);
@@ -135,7 +128,10 @@ fn build_identity_map() linksection(".text.boot") void {
     const root = arena.allocate();
     if (root != pt_base) hangBoot();
 
-    const normal_flags = DESC_VALID | MM_ACCESS | PT_ISH | PT_MEM;
+    const normal_flags = page_table.descriptor_table_or_page |
+        page_table.access_flag |
+        page_table.inner_shareable |
+        page_table.attr_index_normal;
     mapRange(root, kernelPhysStart(), kernelPhysEnd(), normal_flags, &arena);
     const fdt_size = readFdtSize();
     mapRange(root, build_options.fdt_phys, build_options.fdt_phys + fdt_size, normal_flags, &arena);
@@ -164,12 +160,12 @@ fn activate_mmu() linksection(".text.boot") void {
         .SH1 = regs.TCR_EL1.Shareability.InnerShareable,
         .ORGN1 = regs.TCR_EL1.OuterCacheability.NormalMemory_Outer_WriteBack_ReadAllocate_WriteAllocateCacheable,
         .IRGN1 = regs.TCR_EL1.InnerCacheability.NormalMemory_Inner_WriteBack_ReadAllocate_WriteAllocateCacheable,
-        .T1SZ = 16,
+        .T1SZ = page_table.tcr_size_offset,
 
         .SH0 = regs.TCR_EL1.Shareability.InnerShareable,
         .ORGN0 = regs.TCR_EL1.OuterCacheability.NormalMemory_Outer_WriteBack_ReadAllocate_WriteAllocateCacheable,
         .IRGN0 = regs.TCR_EL1.InnerCacheability.NormalMemory_Inner_WriteBack_ReadAllocate_WriteAllocateCacheable,
-        .T0SZ = 16,
+        .T0SZ = page_table.tcr_size_offset,
 
         .TG1 = regs.TCR_EL1.TG1GranuleSize.Size_4KB,
         .TG0 = regs.TCR_EL1.TG0GranuleSize.Size_4KB,
