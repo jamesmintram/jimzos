@@ -1,6 +1,8 @@
-const regs = @import("../../../types/regs.zig");
-
-const Register = regs.Register;
+pub const Register = union(enum) {
+    ReadOnly: u32,
+    WriteOnly: u32,
+    ReadWrite: u32,
+};
 
 /// Full-system data memory barrier that orders MMIO accesses on real hardware.
 inline fn barrier() void {

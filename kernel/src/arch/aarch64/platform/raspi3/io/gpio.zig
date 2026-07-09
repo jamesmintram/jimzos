@@ -1,8 +1,6 @@
-const regs = @import("../../../types/regs.zig");
-
 const mmio = @import("mmio.zig");
 
-const Register = regs.Register;
+const Register = mmio.Register;
 
 pub const GPFSEL0 = @as(u32, mmio.MMIO_BASE + 0x00200000);
 pub const GPFSEL1 = Register{ .ReadWrite = mmio.MMIO_BASE + 0x00200004 };

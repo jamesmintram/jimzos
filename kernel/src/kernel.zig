@@ -1,6 +1,5 @@
 // const builtin = @import("builtin");
 const kprint = @import("kprint.zig");
-const arch_init = @import("arch/aarch64/arch_init.zig");
 const std = @import("std");
 const builtin = @import("std").builtin;
 
@@ -30,7 +29,6 @@ comptime {
 }
 
 export fn kmain(boot_info: *const BootInfo) noreturn {
-    arch_init.init();
     kernel_elf.init() catch unreachable;
 
     kprint.write("JimZOS v0.1.1 ({} described CPUs)\r", .{boot_info.cpus.len});
@@ -56,7 +54,6 @@ export fn kmain(boot_info: *const BootInfo) noreturn {
 
 fn kmainInit() noreturn {
     // framebuffer.init().?;
-    // framebuffer.write("JimZOS v{}\r", .{util.Version});
 
     kprint.write("Entered init thread\r", .{});
 

@@ -141,7 +141,7 @@ pub const SPSR_EL3 = packed struct(usize) {
     }
 };
 test "empty SPSR_EL3 to bits" {
-    const reg =SPSR_EL3{};
+    const reg = SPSR_EL3{};
     try expect(0x00000000 == reg.toBits());
 }
 
@@ -227,7 +227,7 @@ pub const HCR_EL2 = packed struct(usize) {
     }
 };
 test "empty HCR_EL2 to bits" {
-    const reg =HCR_EL2{};
+    const reg = HCR_EL2{};
     try expect(0x00000000 == reg.toBits());
 }
 
@@ -293,7 +293,7 @@ pub const SPSR_EL2 = packed struct(usize) {
     }
 };
 test "empty SPSR_EL2 to bits" {
-    const reg =SPSR_EL2{};
+    const reg = SPSR_EL2{};
     try expect(0x00000000 == reg.toBits());
 }
 
@@ -419,7 +419,7 @@ pub const TCR_EL1 = packed struct(usize) {
     }
 };
 test "empty TCR_EL1 to bits" {
-    const reg =TCR_EL1{};
+    const reg = TCR_EL1{};
     try expect(0x00000000 == reg.toBits());
 }
 
@@ -504,7 +504,7 @@ pub const SCTLR_EL1 = packed struct(usize) {
     }
 };
 test "empty SCTLR_EL1 to bits" {
-    const reg =SCTLR_EL1{};
+    const reg = SCTLR_EL1{};
     try expect(0x00500800 == reg.toBits());
 }
 
@@ -549,7 +549,7 @@ pub const ID_AA64MMFR0_EL1 = packed struct(usize) {
     }
 };
 test "empty ID_AA64MMFR0_EL1 to bits" {
-    const reg =ID_AA64MMFR0_EL1{};
+    const reg = ID_AA64MMFR0_EL1{};
     try expect(0x00000000 == reg.toBits());
 }
 
@@ -585,7 +585,7 @@ pub const MAIR_EL1 = packed struct(usize) {
     }
 };
 test "empty MAIR_EL1 to bits" {
-    const reg =MAIR_EL1{};
+    const reg = MAIR_EL1{};
     try expect(0x00000000 == reg.toBits());
 }
 
@@ -659,7 +659,7 @@ pub const ESR_EL1 = packed struct(usize) {
     }
 };
 test "empty ESR_EL1 to bits" {
-    const reg =ESR_EL1{};
+    const reg = ESR_EL1{};
     try expect(0x00000000 == reg.toBits());
 }
 
@@ -690,7 +690,7 @@ pub const DAIF = packed struct(usize) {
     }
 };
 test "empty DAIF to bits" {
-    const reg =DAIF{};
+    const reg = DAIF{};
     try expect(0x00000000 == reg.toBits());
 }
 
@@ -752,10 +752,3 @@ pub const TTBR1_EL1 = struct {
 
 const std = @import("std");
 const expect = std.testing.expect;
-
-// TODO: Where should this live?
-pub const Register = union(enum) {
-    ReadOnly: u32,
-    WriteOnly: u32,
-    ReadWrite: u32,
-};
