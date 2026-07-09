@@ -1,0 +1,48 @@
+/dts-v1/;
+
+/memreserve/ 0x0000000040002000 0x0000000000001000;
+
+/ {
+	#address-cells = <2>;
+	#size-cells = <2>;
+
+	memory@40000000 {
+		device_type = "memory";
+		reg = <0x0 0x40000000 0x0 0x01000000
+		       0x0 0x50000000 0x0 0x00800000>;
+	};
+
+	memory@60000000 {
+		device_type = "memory";
+		reg = <0x0 0x60000000 0x0 0x00400000>;
+		status = "disabled";
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		secure@40004000 {
+			reg = <0x0 0x40004000 0x0 0x2000>;
+			no-map;
+		};
+	};
+
+	cpus {
+		#address-cells = <2>;
+		#size-cells = <0>;
+
+		cpu@0 {
+			device_type = "cpu";
+			reg = <0x0 0x0>;
+			enable-method = "psci";
+		};
+
+		cpu@1 {
+			device_type = "cpu";
+			reg = <0x0 0x1>;
+			enable-method = "psci";
+		};
+	};
+};
