@@ -62,6 +62,9 @@ pub fn build(b: *std.Build) void {
 
     exe_mod.linkLibrary(lib_boot1_phys);
 
+    const devicetree_dep = b.dependency("devicetree", .{});
+    exe_mod.addImport("DeviceTree", devicetree_dep.module("DeviceTree"));
+
     const exe = b.addExecutable(.{
         .name = "kernel8.elf",
         .root_module = exe_mod,

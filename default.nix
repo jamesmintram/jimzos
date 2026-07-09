@@ -21,6 +21,7 @@ stdenv.mkDerivation {
     cmake
     fzf
     qemu
+    dtc
     glibcLocales
   ];
 

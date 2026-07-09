@@ -4,10 +4,10 @@
  * jimzos.dts — minimal device tree for JimZOS on the Raspberry Pi 3 (BCM2837),
  * as emulated by `qemu-system-aarch64 -M raspi3b`.
  *
- * This is deliberately the smallest tree that describes the two things the
- * kernel needs to bootstrap: the CPUs and the system RAM. Peripherals (the
- * console/UART, interrupt controller, timer, ...) get added as the kernel
- * grows a device model.
+ * This is deliberately a small tree describing what the kernel needs to
+ * bootstrap: the CPUs, the system RAM, and the PL011 UART console (chosen via
+ * /chosen stdout-path). More peripherals (interrupt controller, timer, ...)
+ * get added as the kernel grows a device model.
  *
  * Build:  dtc -I dts -O dtb -o jimzos.dtb jimzos.dts   (or `zig build dtb`)
  */
@@ -18,6 +18,20 @@
 
 	model = "JimZOS Raspberry Pi 3 Model B";
 	compatible = "raspberrypi,3-model-b", "brcm,bcm2837";
+
+	/*
+	 * Boot console. stdout-path names it: the part before ':' is an /aliases
+	 * key (serial0), the rest ("115200n8" = baud/parity/bits) is a hint the
+	 * kernel may honour. The kernel resolves serial0 -> /soc/serial@3f201000
+	 * and configures that PL011.
+	 */
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+
+	aliases {
+		serial0 = "/soc/serial@3f201000";
+	};
 
 	/*
 	 * System RAM. The BCM2837 places the peripheral (MMIO) window at
@@ -62,6 +76,34 @@
 			device_type = "cpu";
 			compatible = "arm,cortex-a53";
 			reg = <3>;
+		};
+	};
+
+	/*
+	 * On-chip peripherals. Real Pi device trees give this a translating
+	 * `ranges` from legacy 0x7e00_0000 VideoCore bus addresses to the
+	 * 0x3f00_0000 ARM-physical window. We keep it simple with an identity
+	 * `ranges` (and physical addresses), so a node's `reg` IS the MMIO
+	 * address — the DeviceTree lib does not translate ranges for us.
+	 */
+	soc {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		/*
+		 * PL011 (PrimeCell) UART0 — the current kprint console. uart.zig
+		 * programs the baud divisors against a 4 MHz reference clock it
+		 * sets via the VideoCore mailbox (MBOX_TAG_SETCLKRATE);
+		 * clock-frequency records that rate so a future DT-driven init can
+		 * drop the bespoke mailbox call. reg is the full PrimeCell block.
+		 */
+		serial@3f201000 {
+			compatible = "arm,pl011", "arm,primecell";
+			reg = <0x3f201000 0x200>;
+			clock-frequency = <4000000>;
+			status = "okay";
 		};
 	};
 };

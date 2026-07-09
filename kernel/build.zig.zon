@@ -1,0 +1,12 @@
+.{
+    .name = .kernel,
+    .version = "0.16.0",
+    .dependencies = .{
+        .devicetree = .{
+            .url = "git+https://github.com/CascadeOS/zig-devicetree#53ec12cb0e724c16ee9cebb04ed3e97ff93ef82c",
+            .hash = "devicetree-4.0.1-cZRcrCCRAQC_m06ln8G0jL9d53Qij11v5cJgJ7LJfB74",
+        },
+    },
+    .paths = .{""},
+    .fingerprint = 0x5dd29aabaf37c344,
+}
