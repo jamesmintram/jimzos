@@ -77,7 +77,8 @@ pub fn create_initial_thread(allocator: *Allocator, thread_fn: *const fn () void
     const frame: *CPUFrame = @ptrFromInt(newThread.stack_pointer);
     frame.* = std.mem.zeroes(CPUFrame);
 
-    frame.tf_lr = @intFromPtr(thread_fn);
+    frame.tf_lr = @intFromPtr(&threadEntry);
+    frame.tf_x[0] = @intFromPtr(thread_fn);
     frame.tf_sp = newThread.stack_pointer;
 
     var spsr: u32 = 0;
@@ -93,6 +94,12 @@ pub fn create_initial_thread(allocator: *Allocator, thread_fn: *const fn () void
     add_to_thread_list(newThread);
 
     return newThread;
+}
+
+fn threadEntry(entry_address: usize) callconv(.c) noreturn {
+    const entry: *const fn () void = @ptrFromInt(entry_address);
+    entry();
+    @panic("kernel thread returned");
 }
 
 pub fn current_thread() *Thread {

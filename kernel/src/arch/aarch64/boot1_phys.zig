@@ -33,17 +33,23 @@ inline fn bootStackPhys() usize {
     );
 }
 
+inline fn kernelPhysStart() usize {
+    return asm volatile ("ldr %[value], =__kernel_phys_start"
+        : [value] "=r" (-> usize),
+    );
+}
+
+inline fn kernelPhysEnd() usize {
+    return asm volatile ("ldr %[value], =__kernel_phys_end"
+        : [value] "=r" (-> usize),
+    );
+}
+
 // --- Page-table geometry (4 KiB granule, 4-level walk) ---------------------
-// Pool layout, which must match linker.ld's
-//   table[0]        L0 / PGD
-//   table[1]        L1 / PUD
-//   table[2..4)     L2 / PMD (one per GiB)
-//   table[4..1028)  L3 / PTE (1024 contiguous leaf tables)
 const TABLE_SIZE: usize = 0x1000;
 const ENTRIES_PER_TABLE: usize = 512;
-const SECTION_SIZE: usize = 0x1000; // each L3 entry maps one 4 KiB page
-const L2_TABLE_COUNT: usize = 2;
-const FIRST_L3_TABLE: usize = 2 + L2_TABLE_COUNT;
+const PAGE_SIZE: usize = 0x1000;
+const TABLE_ADDRESS_MASK: usize = 0x0000fffffffff000;
 
 // --- Descriptor bits (mirror consts.h) -------------------------------------
 const DESC_VALID: usize = 0b11; //  valid + table descriptor (L0-L2) / page descriptor (L3)
@@ -53,83 +59,89 @@ const PT_ISH: usize = 3 << 8; //    inner shareable
 const PT_MEM: usize = 0 << 2; //    AttrIndx 0 -> MAIR Attr0 (normal write-back)
 const PT_DEV: usize = 1 << 2; //    AttrIndx 1 -> MAIR Attr1 (device)
 
-const AddressRange = struct {
-    start: usize,
+const TableArena = struct {
+    next: usize,
     end: usize,
+
+    inline fn allocate(self: *TableArena) usize {
+        if (self.next + TABLE_SIZE > self.end) hangBoot();
+        const physical = self.next;
+        self.next += TABLE_SIZE;
+        const table: [*]volatile usize = @ptrFromInt(physical);
+        var i: usize = 0;
+        while (i < ENTRIES_PER_TABLE) : (i += 1) table[i] = 0;
+        return physical;
+    }
 };
 
-const ram = switch (build_options.platform) {
-    .raspi3 => AddressRange{ .start = 0x00000000, .end = 0x3effffff },
-    .virt => AddressRange{ .start = 0x40000000, .end = 0x7fffffff },
-};
-const device = switch (build_options.platform) {
-    .raspi3 => AddressRange{ .start = 0x3f000000, .end = 0x3fffffff },
-    .virt => AddressRange{ .start = 0x00000000, .end = 0x3fffffff },
-};
+inline fn tableAt(physical: usize) [*]volatile usize {
+    return @ptrFromInt(physical);
+}
 
-/// Build one set of page tables that identity-maps all of physical memory.
-///
-/// The same root table is installed in both TTBR0 (low VAs, used by this boot
-/// code which is still executing at physical addresses) and TTBR1 (high VAs,
-/// the kernel's higher half: VA = PA + kernel_va_base). Because the table walk
-/// ignores the top 16 bits of the VA, a single identity map serves both halves.
+inline fn ensureNext(parent_phys: usize, index: usize, arena: *TableArena) usize {
+    const parent = tableAt(parent_phys);
+    if ((parent[index] & DESC_VALID) != 0) return parent[index] & TABLE_ADDRESS_MASK;
+    const child = arena.allocate();
+    parent[index] = child | DESC_VALID;
+    return child;
+}
+
+inline fn mapPage(root_phys: usize, physical: usize, flags: usize, arena: *TableArena) void {
+    const l1_phys = ensureNext(root_phys, (physical >> 39) & 0x1ff, arena);
+    const l2_phys = ensureNext(l1_phys, (physical >> 30) & 0x1ff, arena);
+    const l3_phys = ensureNext(l2_phys, (physical >> 21) & 0x1ff, arena);
+    const l3 = tableAt(l3_phys);
+    l3[(physical >> 12) & 0x1ff] = physical | flags;
+}
+
+inline fn mapRange(root_phys: usize, start: usize, end: usize, flags: usize, arena: *TableArena) void {
+    var physical = start & ~(PAGE_SIZE - 1);
+    const aligned_end = (end + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+    while (physical < aligned_end) : (physical += PAGE_SIZE) {
+        if (physical != kernelStackGuardPhys()) mapPage(root_phys, physical, flags, arena);
+    }
+}
+
+inline fn readFdtSize() usize {
+    const header: [*]volatile u32 = @ptrFromInt(build_options.fdt_phys);
+    if (@byteSwap(header[0]) != 0xd00dfeed) hangBoot();
+    const size: usize = @byteSwap(header[1]);
+    if (size < 40 or size > 2 * 1024 * 1024) hangBoot();
+    return size;
+}
+
+inline fn mapEarlyDevices(root_phys: usize, arena: *TableArena) void {
+    const flags = DESC_VALID | MM_ACCESS | PT_OSH | PT_DEV;
+    switch (build_options.platform) {
+        .raspi3 => {
+            mapRange(root_phys, 0x3f00b000, 0x3f00c000, flags, arena);
+            mapRange(root_phys, 0x3f200000, 0x3f202000, flags, arena);
+        },
+        .virt => mapRange(root_phys, 0x09000000, 0x09001000, flags, arena),
+    }
+}
+
+inline fn hangBoot() noreturn {
+    while (true) asm volatile ("wfe");
+}
+
+/// Build a deliberately small temporary map. The same root is used for TTBR0
+/// and TTBR1 until the higher-half kernel installs its FDT-derived final map.
 fn build_identity_map() linksection(".text.boot") void {
     @setRuntimeSafety(false);
 
     const pt_base = pageTablesPhysStart();
     const pt_size = pageTablesSize();
+    // The upper half remains untouched for the higher-half transition mapper.
+    var arena = TableArena{ .next = pt_base, .end = pt_base + pt_size / 2 };
+    const root = arena.allocate();
+    if (root != pt_base) hangBoot();
 
-    // `volatile` so the zeroing loop below is emitted as real stores instead of
-    // being lowered to a `memset` libcall: memset lives in the kernel's high
-    // .text, which this MMU-off boot code cannot reach.
-    const tables: [*]volatile usize = @ptrFromInt(pt_base);
-
-    // Clear the whole pool so every entry we do not fill stays an invalid
-    // descriptor (bit 0 = 0).
-    const total_entries = pt_size / @sizeOf(usize);
-    var i: usize = 0;
-    while (i < total_entries) : (i += 1) tables[i] = 0;
-
-    // L0 (PGD)[0] -> L1 (PUD) table
-    tables[0] = (pt_base + TABLE_SIZE) | DESC_VALID;
-
-    // L1 (PUD)[0..2) -> the two L2 (PMD) tables.
-    const pud = tables + ENTRIES_PER_TABLE;
-    i = 0;
-    while (i < L2_TABLE_COUNT) : (i += 1) {
-        pud[i] = (pt_base + (2 + i) * TABLE_SIZE) | DESC_VALID;
-    }
-
-    // Each L2 table points at 512 L3 tables, mapping one GiB.
-    const pmd = tables + 2 * ENTRIES_PER_TABLE;
-    var pte_table = pt_base + FIRST_L3_TABLE * TABLE_SIZE;
-    i = 0;
-    while (i < L2_TABLE_COUNT * ENTRIES_PER_TABLE) : (i += 1) {
-        pmd[i] = pte_table | DESC_VALID;
-        pte_table += TABLE_SIZE;
-    }
-
-    // The L3 tables are contiguous, so the index is simply PA / page size.
-    const pte = tables + FIRST_L3_TABLE * ENTRIES_PER_TABLE;
-
-    const ram_flags = DESC_VALID | MM_ACCESS | PT_ISH | PT_MEM;
-    var phys = ram.start;
-    while (phys <= ram.end) : (phys += SECTION_SIZE) {
-        pte[phys / SECTION_SIZE] = phys | ram_flags;
-    }
-
-    const dev_flags = DESC_VALID | MM_ACCESS | PT_OSH | PT_DEV;
-    phys = device.start;
-    while (phys <= device.end) : (phys += SECTION_SIZE) {
-        pte[phys / SECTION_SIZE] = phys | dev_flags;
-    }
-
-    // Punch a hole for the kernel stack guard page: clear its leaf entry so an
-    // overflow past __kernel_stack_limit faults instead of silently corrupting
-    // whatever is below it. pte[i] maps physical page i, so the index is
-    // guard_phys >> page_shift. Both TTBR0 and TTBR1 walk this same entry.
-    const guard_phys = kernelStackGuardPhys();
-    pte[guard_phys / SECTION_SIZE] = 0;
+    const normal_flags = DESC_VALID | MM_ACCESS | PT_ISH | PT_MEM;
+    mapRange(root, kernelPhysStart(), kernelPhysEnd(), normal_flags, &arena);
+    const fdt_size = readFdtSize();
+    mapRange(root, build_options.fdt_phys, build_options.fdt_phys + fdt_size, normal_flags, &arena);
+    mapEarlyDevices(root, &arena);
 }
 
 fn activate_mmu() linksection(".text.boot") void {

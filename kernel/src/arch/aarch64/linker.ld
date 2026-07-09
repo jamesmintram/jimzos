@@ -18,8 +18,9 @@ SECTIONS {
   __kernel_stack_guard_phys = __kernel_stack_guard - kernel_va_base;
   __heap_phys_start = __heap_start - kernel_va_base;
 
-  /* L0 + L1 + two L2 tables + 1024 L3 tables maps the first 2 GiB. */
-  __page_tables_size = ((4 + 1024) * 0x1000);
+  /* Bounded arena for the minimal bootstrap map. Final tables come from the
+     physical page allocator after the FDT memory map has been parsed. */
+  __page_tables_size = (32 * 0x1000);
   __page_tables_phys_start = __page_tables_start - kernel_va_base;
   __page_tables_phys_end = __page_tables_phys_start + __page_tables_size;
 

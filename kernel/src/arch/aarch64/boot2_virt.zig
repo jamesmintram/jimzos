@@ -23,6 +23,8 @@ const Pl011 = @import("../../drivers/serial/pl011.zig").Pl011;
 const boot = @import("../../boot/boot_info.zig");
 const fdt_boot = @import("../../boot/fdt_boot.zig");
 const vm = @import("../../vm.zig");
+const final_page_table = @import("final_page_table.zig");
+const bootstrap_mapper = @import("bootstrap_mapper.zig");
 
 var early_console: Pl011 = undefined;
 var attached_console: Pl011 = undefined;
@@ -213,7 +215,15 @@ export fn init_arm(boot_x0: usize) callconv(.c) noreturn {
 
     dumpBootInfo(&boot_info_storage);
 
+    bootstrap_mapper.mapAllocatorMetadata(&boot_info_storage) catch exit();
     vm.init(&boot_info_storage) catch exit();
+    const final_tables = final_page_table.install(
+        vm.get_page_frame_manager(),
+        &boot_info_storage,
+        boot.PhysRange.fromStartSize(early_config.physical_base, early_config.region_size) catch exit(),
+    ) catch exit();
+    early_console.useMappedRegisters(0xffff000000000000 + early_config.physical_base);
+    kprint.write("MMU: final FDT map installed using {} table pages\r", .{final_tables.table_pages});
 
     attachConsoleDriver(fdt) catch exit();
 
