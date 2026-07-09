@@ -45,6 +45,7 @@
 	ldp	x24, x25, [sp, #(CPUFrame_tf_x + 24 * 8)]
 	ldp	x22, x23, [sp, #(CPUFrame_tf_x + 22 * 8)]
 	ldp	x20, x21, [sp, #(CPUFrame_tf_x + 20 * 8)]
+	ldp	x18, x19, [sp, #(CPUFrame_tf_x + 18 * 8)]
 	ldp	x16, x17, [sp, #(CPUFrame_tf_x + 16 * 8)]
 	ldp	x14, x15, [sp, #(CPUFrame_tf_x + 14 * 8)]
 	ldp	x12, x13, [sp, #(CPUFrame_tf_x + 12 * 8)]

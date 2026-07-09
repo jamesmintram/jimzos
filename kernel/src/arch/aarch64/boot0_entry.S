@@ -8,14 +8,14 @@ __start:
 .section ".text.boot"
 .type __start_ram, %function
 __start_ram:
-  // read processor number, move slave processors to an infinite loop
+  // Read Aff0 and park secondary processors.
   mrs	  x7, mpidr_el1
-  and	  x7, x7, #3
+  and	  x7, x7, #0xff
   cbz	  x7, __start_master
   b		  __hang
 
 __start_master:
-  // Use a chunk at the start of the heap for bootstrap stack
+  // Use the dedicated physical bootstrap stack from the linker script.
   adrp	x2, __boot_phys_stack
   mov	  sp, x2
 
