@@ -63,6 +63,11 @@ pub fn build(b: *std.Build) void {
         .cpu_model = .{ .explicit = &std.Target.aarch64.cpu.generic },
         .cpu_features_sub = std.Target.aarch64.featureSet(&.{ .neon, .fp_armv8 }),
     });
+    const phys_range_mod = b.createModule(.{
+        .root_source_file = b.path("src/vm/phys_range.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
 
     // boot1_phys (the physical, MMU-off bring-up) is built as its own static
     // library so it gets its own root source file (linksection(".text.boot")
@@ -76,6 +81,7 @@ pub fn build(b: *std.Build) void {
         .unwind_tables = .none,
     });
     boot1_phys_mod.addOptions("build_options", build_options);
+    boot1_phys_mod.addImport("phys_range", phys_range_mod);
     const lib_boot1_phys = b.addLibrary(.{
         .name = "boot1_phys",
         .linkage = .static,
@@ -96,6 +102,7 @@ pub fn build(b: *std.Build) void {
     });
     exe_mod.addOptions("build_options", build_options);
     exe_mod.addImport("ext2", ext2_mod);
+    exe_mod.addImport("phys_range", phys_range_mod);
 
     exe_mod.addAssemblyFile(b.path("src/arch/aarch64/boot0_entry.S"));
     exe_mod.addAssemblyFile(b.path("src/arch/aarch64/exception.S"));
@@ -114,7 +121,13 @@ pub fn build(b: *std.Build) void {
         .target = b.graph.host,
         .optimize = optimize,
     });
+    const memory_test_phys_range_mod = b.createModule(.{
+        .root_source_file = b.path("src/vm/phys_range.zig"),
+        .target = b.graph.host,
+        .optimize = optimize,
+    });
     memory_test_mod.addImport("DeviceTree", devicetree_dep.module("DeviceTree"));
+    memory_test_mod.addImport("phys_range", memory_test_phys_range_mod);
     memory_test_mod.addAnonymousImport("memory_test_dtb", .{ .root_source_file = memory_test_dtb });
     const memory_tests = b.addTest(.{ .root_module = memory_test_mod });
     const run_memory_tests = b.addRunArtifact(memory_tests);

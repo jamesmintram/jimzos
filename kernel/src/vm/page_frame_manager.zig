@@ -1,6 +1,6 @@
 const std = @import("std");
 const boot = @import("../boot/boot_info.zig");
-const ranges = @import("phys_range.zig");
+const ranges = @import("phys_range");
 
 pub const page_size: usize = @intCast(ranges.page_size);
 const kernel_va_base: usize = 0xffff000000000000;

@@ -1,6 +1,6 @@
 const std = @import("std");
 const DeviceTree = @import("DeviceTree");
-const ranges = @import("../vm/phys_range.zig");
+const ranges = @import("phys_range");
 
 pub const PhysRange = ranges.PhysRange;
 pub const page_size = ranges.page_size;

@@ -1,5 +1,5 @@
 test {
-    _ = @import("vm/phys_range.zig");
+    _ = @import("phys_range");
     _ = @import("boot/boot_info.zig");
     _ = @import("io/mmio_region.zig");
 }

@@ -1,5 +1,5 @@
 const boot = @import("../../boot/boot_info.zig");
-const phys = @import("../../vm/phys_range.zig");
+const phys = @import("phys_range");
 
 const kernel_va_base: u64 = 0xffff000000000000;
 const table_size: u64 = 4096;

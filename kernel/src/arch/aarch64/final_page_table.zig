@@ -1,6 +1,6 @@
 const std = @import("std");
 const boot = @import("../../boot/boot_info.zig");
-const phys = @import("../../vm/phys_range.zig");
+const phys = @import("phys_range");
 const PhysicalAllocator = @import("../../vm/page_frame_manager.zig").PhysicalAllocator;
 const bootstrap_mapper = @import("bootstrap_mapper.zig");
 

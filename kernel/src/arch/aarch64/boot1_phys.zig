@@ -115,7 +115,7 @@ inline fn mapEarlyDevices(root_phys: usize, arena: *TableArena) void {
     const flags = DESC_VALID | MM_ACCESS | PT_OSH | PT_DEV;
     inline for (0..platform.bootstrap_device_range_count) |index| {
         const range = platform.bootstrapDeviceRange(index);
-        mapRange(root_phys, range.start, range.end, flags, arena);
+        mapRange(root_phys, @intCast(range.start), @intCast(range.end), flags, arena);
     }
 }
 

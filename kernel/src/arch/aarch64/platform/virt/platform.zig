@@ -1,6 +1,6 @@
-const PhysicalRange = @import("../types.zig").PhysicalRange;
+const PhysRange = @import("phys_range").PhysRange;
 
-pub const bootstrap_device_ranges = [_]PhysicalRange{
+pub const bootstrap_device_ranges = [_]PhysRange{
     .{ .start = 0x09000000, .end = 0x09001000 }, // PL011
 };
 
