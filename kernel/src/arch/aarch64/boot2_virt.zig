@@ -91,7 +91,10 @@ fn looksLikeString(raw: []const u8) bool {
 }
 
 fn dumpConsole(config: @import("../../drivers/serial/pl011.zig").Config) void {
-    kprint.write("  PL011 base = 0x{x}, size = 0x{x}\r", .{ config.physical_base, config.region_size });
+    kprint.write("  PL011 base = 0x{x}, size = 0x{x}\r", .{
+        config.registers.physicalBase(),
+        config.registers.size(),
+    });
     kprint.write("  clock = {} Hz, baud = {}\r", .{ config.clock_hz, config.baud });
 }
 
@@ -99,7 +102,7 @@ fn attachConsoleDriver(fdt: DeviceTree) !void {
     const config = try dt_console.discover(fdt);
     attached_console = try Pl011.adopt(&early_console, config);
     attached_console.installAsConsole();
-    kprint.write("console: adopted early PL011 at 0x{x}\r", .{config.physical_base});
+    kprint.write("console: adopted early PL011 at 0x{x}\r", .{config.registers.physicalBase()});
 }
 
 fn finishBootInfo(mut_builder: boot.Builder) !BootInfo {
@@ -220,9 +223,14 @@ export fn init_arm(boot_x0: usize) callconv(.c) noreturn {
     const final_tables = final_page_table.install(
         vm.get_page_frame_manager(),
         &boot_info_storage,
-        boot.PhysRange.fromStartSize(early_config.physical_base, early_config.region_size) catch exit(),
+        boot.PhysRange.fromStartSize(
+            early_config.registers.physicalBase(),
+            early_config.registers.size(),
+        ) catch exit(),
     ) catch exit();
-    early_console.useMappedRegisters(0xffff000000000000 + early_config.physical_base);
+    early_console.useMappedRegisters(
+        0xffff000000000000 + early_config.registers.physicalBase(),
+    ) catch exit();
     kprint.write("MMU: final FDT map installed using {} table pages\r", .{final_tables.table_pages});
 
     attachConsoleDriver(fdt) catch exit();

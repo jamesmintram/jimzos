@@ -1,6 +1,7 @@
 test {
     _ = @import("vm/phys_range.zig");
     _ = @import("boot/boot_info.zig");
+    _ = @import("io/mmio_region.zig");
 }
 
 const std = @import("std");

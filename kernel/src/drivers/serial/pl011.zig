@@ -1,5 +1,6 @@
 const std = @import("std");
 const console = @import("../../console.zig");
+const MmioRegion = @import("../../io/mmio_region.zig").MmioRegion;
 
 const data_register = 0x000;
 const flag_register = 0x018;
@@ -18,20 +19,14 @@ const control_uart_enable = 1 << 0;
 const control_transmit_enable = 1 << 8;
 const control_receive_enable = 1 << 9;
 
-inline fn barrier() void {
-    asm volatile ("dmb sy" ::: .{ .memory = true });
-}
-
 pub const Config = struct {
-    physical_base: usize,
-    region_size: usize,
+    registers: MmioRegion,
     clock_hz: u32,
     baud: u32,
 };
 
 pub const Pl011 = struct {
     config: Config,
-    register_base: usize,
 
     const console_vtable: console.Device.VTable = .{
         .put = consolePut,
@@ -39,26 +34,28 @@ pub const Pl011 = struct {
     };
 
     pub fn create(config: Config) Pl011 {
-        return .{ .config = config, .register_base = config.physical_base };
+        return .{ .config = config };
     }
 
     /// Take ownership of an already configured early console without touching
     /// its registers, so output remains uninterrupted during driver attach.
     pub fn adopt(early: *const Pl011, config: Config) !Pl011 {
-        if (early.config.physical_base != config.physical_base) {
+        if (!early.config.registers.samePhysicalRange(config.registers)) {
             return error.ConsoleMismatch;
         }
 
-        return .{ .config = config, .register_base = early.register_base };
+        var adopted_config = config;
+        adopted_config.registers = early.config.registers;
+        return .{ .config = adopted_config };
     }
 
-    pub fn useMappedRegisters(self: *Pl011, virtual_base: usize) void {
-        self.register_base = virtual_base;
+    pub fn useMappedRegisters(self: *Pl011, virtual_base: usize) !void {
+        self.config.registers = try self.config.registers.withVirtualBase(virtual_base);
     }
 
     pub fn configure(self: *Pl011) !void {
         if (self.config.baud == 0) return error.InvalidBaud;
-        if (self.config.region_size < interrupt_clear_register + @sizeOf(u32)) {
+        if (self.config.registers.size() < interrupt_clear_register + @sizeOf(u32)) {
             return error.InvalidRegisterRegion;
         }
 
@@ -70,13 +67,13 @@ pub const Pl011 = struct {
             return error.InvalidClock;
         }
 
-        self.write(control_register, 0);
-        self.write(interrupt_mask_register, 0);
-        self.write(interrupt_clear_register, 0x7ff);
-        self.write(integer_baud_register, @intCast(integer_divisor));
-        self.write(fractional_baud_register, @intCast(fractional_divisor));
-        self.write(line_control_register, line_control_word_length_8 | line_control_fifo_enable);
-        self.write(control_register, control_uart_enable | control_transmit_enable | control_receive_enable);
+        self.config.registers.write32(control_register, 0);
+        self.config.registers.write32(interrupt_mask_register, 0);
+        self.config.registers.write32(interrupt_clear_register, 0x7ff);
+        self.config.registers.write32(integer_baud_register, @intCast(integer_divisor));
+        self.config.registers.write32(fractional_baud_register, @intCast(fractional_divisor));
+        self.config.registers.write32(line_control_register, line_control_word_length_8 | line_control_fifo_enable);
+        self.config.registers.write32(control_register, control_uart_enable | control_transmit_enable | control_receive_enable);
     }
 
     pub fn asConsole(self: *Pl011) console.Device {
@@ -100,13 +97,13 @@ pub const Pl011 = struct {
     }
 
     pub fn get(self: *Pl011) u8 {
-        while ((self.read(flag_register) & flag_receive_empty) != 0) {}
-        return @truncate(self.read(data_register));
+        while ((self.config.registers.read32(flag_register) & flag_receive_empty) != 0) {}
+        return @truncate(self.config.registers.read32(data_register));
     }
 
     fn putRaw(self: *Pl011, byte: u8) void {
-        while ((self.read(flag_register) & flag_transmit_full) != 0) {}
-        self.write(data_register, byte);
+        while ((self.config.registers.read32(flag_register) & flag_transmit_full) != 0) {}
+        self.config.registers.write32(data_register, byte);
     }
 
     fn consolePut(context: *anyopaque, byte: u8) void {
@@ -117,15 +114,5 @@ pub const Pl011 = struct {
     fn consoleGet(context: *anyopaque) u8 {
         const self: *Pl011 = @ptrCast(@alignCast(context));
         return self.get();
-    }
-
-    fn write(self: *const Pl011, offset: usize, value: u32) void {
-        barrier();
-        @as(*volatile u32, @ptrFromInt(self.register_base + offset)).* = value;
-    }
-
-    fn read(self: *const Pl011, offset: usize) u32 {
-        barrier();
-        return @as(*volatile u32, @ptrFromInt(self.register_base + offset)).*;
     }
 };

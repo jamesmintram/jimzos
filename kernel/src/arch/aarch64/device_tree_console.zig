@@ -1,6 +1,7 @@
 const std = @import("std");
 const DeviceTree = @import("DeviceTree");
 const Config = @import("../../drivers/serial/pl011.zig").Config;
+const MmioRegion = @import("../../io/mmio_region.zig").MmioRegion;
 
 pub fn discover(dt: DeviceTree) !Config {
     const chosen = (try dt.nodeFromPath("/chosen")) orelse return error.MissingChosen;
@@ -26,8 +27,10 @@ pub fn discover(dt: DeviceTree) !Config {
 
     const clock_hz = try resolveClock(dt, node.node);
     return .{
-        .physical_base = @intCast(register.address),
-        .region_size = @intCast(register.size),
+        .registers = try MmioRegion.identityMapped(
+            @intCast(register.address),
+            @intCast(register.size),
+        ),
         .clock_hz = clock_hz,
         .baud = try parseBaud(stdout_path, separator),
     };
