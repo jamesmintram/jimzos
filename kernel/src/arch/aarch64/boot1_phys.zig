@@ -6,6 +6,7 @@ const regs = @import("types/regs.zig");
 const processor = @import("processor.zig");
 const asm64 = @import("asm.zig");
 const build_options = @import("build_options");
+const platform = @import("platform.zig");
 
 /// Load absolute linker-symbol values without going through the higher-half
 /// GOT, which is out of ADRP range while this code executes at low addresses.
@@ -112,12 +113,9 @@ inline fn readFdtSize() usize {
 
 inline fn mapEarlyDevices(root_phys: usize, arena: *TableArena) void {
     const flags = DESC_VALID | MM_ACCESS | PT_OSH | PT_DEV;
-    switch (build_options.platform) {
-        .raspi3 => {
-            mapRange(root_phys, 0x3f00b000, 0x3f00c000, flags, arena);
-            mapRange(root_phys, 0x3f200000, 0x3f202000, flags, arena);
-        },
-        .virt => mapRange(root_phys, 0x09000000, 0x09001000, flags, arena),
+    inline for (0..platform.bootstrap_device_range_count) |index| {
+        const range = platform.bootstrapDeviceRange(index);
+        mapRange(root_phys, range.start, range.end, flags, arena);
     }
 }
 

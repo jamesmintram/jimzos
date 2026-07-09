@@ -27,8 +27,8 @@ pub fn build(b: *std.Build) void {
             .ext2_phys = @as(usize, 0x02000000),
             .ext2_reserved_size = @as(usize, 0x00040000),
             .ext2_used_size = @as(usize, 0x00010000),
-            .dts = "../dts/jimzos.dts",
-            .linker_script = "src/arch/aarch64/linker_raspi3.ld",
+            .dts = "src/arch/aarch64/platform/raspi3/jimzos.dts",
+            .linker_script = "src/arch/aarch64/platform/raspi3/linker.ld",
         },
         .virt => .{
             .fdt_phys = @as(usize, 0x40000000),
@@ -38,7 +38,7 @@ pub fn build(b: *std.Build) void {
             .ext2_reserved_size = @as(usize, 0x00040000),
             .ext2_used_size = @as(usize, 0x00010000),
             .dts = null,
-            .linker_script = "src/arch/aarch64/linker_virt.ld",
+            .linker_script = "src/arch/aarch64/platform/virt/linker.ld",
         },
     };
 

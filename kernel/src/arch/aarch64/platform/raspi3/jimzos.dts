@@ -1,7 +1,7 @@
 /dts-v1/;
 
 /*
- * jimzos.dts — minimal device tree for JimZOS on the Raspberry Pi 3 (BCM2837),
+ * Minimal device tree for JimZOS on the Raspberry Pi 3 (BCM2837),
  * as emulated by `qemu-system-aarch64 -M raspi3b`.
  *
  * This is deliberately a small tree describing what the kernel needs to

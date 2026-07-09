@@ -1,4 +1,4 @@
-const regs = @import("../types/regs.zig");
+const regs = @import("../../../types/regs.zig");
 
 const Register = regs.Register;
 

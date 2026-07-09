@@ -1,7 +1,7 @@
 const mmio = @import("io/mmio.zig");
 const mbox = @import("io/mbox.zig");
 const gpio = @import("io/gpio.zig");
-const regs = @import("types/regs.zig");
+const regs = @import("../../types/regs.zig");
 const Register = regs.Register;
 
 // Embedded version number
