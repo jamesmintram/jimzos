@@ -13,7 +13,6 @@ const std = @import("std");
 const kprint = @import("../../kprint.zig");
 const DeviceTree = @import("DeviceTree");
 const build_options = @import("build_options");
-const console = @import("../../console.zig");
 const dt_console = @import("device_tree_console.zig");
 const platform = @import("platform.zig");
 const Pl011 = @import("../../drivers/serial/pl011.zig").Pl011;
@@ -89,7 +88,7 @@ fn dumpConsole(config: @import("../../drivers/serial/pl011.zig").Config) void {
 fn attachConsoleDriver(fdt: DeviceTree) !void {
     const config = try dt_console.discover(fdt);
     attached_console = try Pl011.adopt(&early_console, config);
-    console.attachPl011(&attached_console);
+    attached_console.installAsConsole();
     kprint.write("console: adopted early PL011 at 0x{x}\r", .{config.physical_base});
 }
 
@@ -138,7 +137,7 @@ export fn init_arm(boot_x0: usize) callconv(.c) noreturn {
     platform.prepareEarlyPl011(early_config.clock_hz) catch exit();
     early_console = Pl011.create(early_config);
     early_console.configure() catch exit();
-    console.attachPl011(&early_console);
+    early_console.installAsConsole();
 
     kprint.write("FDT @ 0x{x} ok (v{d}), nodes:\r", .{ fdt_phys, @intFromEnum(fdt.version) });
     dumpFdtNodes(fdt) catch |err| {

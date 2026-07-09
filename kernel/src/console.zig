@@ -1,34 +1,44 @@
 const std = @import("std");
-const Pl011 = @import("drivers/serial/pl011.zig").Pl011;
 
-const Backend = struct {
+pub const Device = struct {
     context: *anyopaque,
-    put: *const fn (*anyopaque, u8) void,
+    vtable: *const VTable,
+
+    pub const VTable = struct {
+        put: *const fn (*anyopaque, u8) void,
+        get: ?*const fn (*anyopaque) u8 = null,
+    };
+
+    pub fn install(self: Device) void {
+        active_device = self;
+    }
+
+    fn put(self: Device, byte: u8) void {
+        self.vtable.put(self.context, byte);
+    }
+
+    fn get(self: Device) ?u8 {
+        const read_byte = self.vtable.get orelse return null;
+        return read_byte(self.context);
+    }
 };
 
-var active_backend: ?Backend = null;
+var active_device: ?Device = null;
 var output_buffer: [256]u8 = undefined;
 var output_writer = std.Io.Writer{
     .vtable = &.{ .drain = drain },
     .buffer = &output_buffer,
 };
 
-pub fn attachPl011(device: *Pl011) void {
-    active_backend = .{
-        .context = device,
-        .put = pl011Put,
-    };
-}
-
 pub fn write(comptime format: []const u8, args: anytype) void {
-    if (active_backend == null) return;
+    if (active_device == null) return;
     output_writer.print(format, args) catch {};
     output_writer.flush() catch {};
 }
 
-fn pl011Put(context: *anyopaque, byte: u8) void {
-    const device: *Pl011 = @ptrCast(@alignCast(context));
-    device.put(byte);
+pub fn read() ?u8 {
+    const device = active_device orelse return null;
+    return device.get();
 }
 
 fn drain(writer: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
@@ -47,6 +57,6 @@ fn drain(writer: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.
 }
 
 fn writeBytes(bytes: []const u8) void {
-    const backend = active_backend orelse return;
-    for (bytes) |byte| backend.put(backend.context, byte);
+    const device = active_device orelse return;
+    for (bytes) |byte| device.put(byte);
 }

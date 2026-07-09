@@ -1,4 +1,5 @@
 const std = @import("std");
+const console = @import("../../console.zig");
 
 const data_register = 0x000;
 const flag_register = 0x018;
@@ -30,9 +31,15 @@ pub const Config = struct {
 
 pub const Pl011 = struct {
     config: Config,
+    register_base: usize,
+
+    const console_vtable: console.Device.VTable = .{
+        .put = consolePut,
+        .get = consoleGet,
+    };
 
     pub fn create(config: Config) Pl011 {
-        return .{ .config = config };
+        return .{ .config = config, .register_base = config.physical_base };
     }
 
     /// Take ownership of an already configured early console without touching
@@ -42,7 +49,11 @@ pub const Pl011 = struct {
             return error.ConsoleMismatch;
         }
 
-        return .{ .config = config };
+        return .{ .config = config, .register_base = early.register_base };
+    }
+
+    pub fn useMappedRegisters(self: *Pl011, virtual_base: usize) void {
+        self.register_base = virtual_base;
     }
 
     pub fn configure(self: *Pl011) !void {
@@ -68,6 +79,17 @@ pub const Pl011 = struct {
         self.write(control_register, control_uart_enable | control_transmit_enable | control_receive_enable);
     }
 
+    pub fn asConsole(self: *Pl011) console.Device {
+        return .{
+            .context = self,
+            .vtable = &console_vtable,
+        };
+    }
+
+    pub fn installAsConsole(self: *Pl011) void {
+        self.asConsole().install();
+    }
+
     pub fn put(self: *Pl011, byte: u8) void {
         if (byte == '\n' or byte == '\r') {
             self.putRaw('\r');
@@ -87,13 +109,23 @@ pub const Pl011 = struct {
         self.write(data_register, byte);
     }
 
+    fn consolePut(context: *anyopaque, byte: u8) void {
+        const self: *Pl011 = @ptrCast(@alignCast(context));
+        self.put(byte);
+    }
+
+    fn consoleGet(context: *anyopaque) u8 {
+        const self: *Pl011 = @ptrCast(@alignCast(context));
+        return self.get();
+    }
+
     fn write(self: *const Pl011, offset: usize, value: u32) void {
         barrier();
-        @as(*volatile u32, @ptrFromInt(self.config.physical_base + offset)).* = value;
+        @as(*volatile u32, @ptrFromInt(self.register_base + offset)).* = value;
     }
 
     fn read(self: *const Pl011, offset: usize) u32 {
         barrier();
-        return @as(*volatile u32, @ptrFromInt(self.config.physical_base + offset)).*;
+        return @as(*volatile u32, @ptrFromInt(self.register_base + offset)).*;
     }
 };
