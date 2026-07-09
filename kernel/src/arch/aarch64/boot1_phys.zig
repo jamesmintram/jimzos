@@ -6,14 +6,25 @@ const regs = @import("types/regs.zig");
 const processor = @import("processor.zig");
 const asm64 = @import("asm.zig");
 
-// Symbols from linker.ld. They are absolute linker symbols, so we only ever
-// take their *addresses* — never read through them:
-//   &__page_tables_phys_start -> physical base of the page-table pool
-//   &__page_tables_size       -> reserved pool size in bytes (the symbol's
-//                                value *is* the size)
-extern const __page_tables_phys_start: u8;
-extern const __page_tables_size: u8;
-extern const __kernel_stack_guard_phys: u8;
+/// Load absolute linker-symbol values without going through the higher-half
+/// GOT, which is out of ADRP range while this code executes at low addresses.
+inline fn pageTablesPhysStart() usize {
+    return asm volatile ("ldr %[value], =__page_tables_phys_start"
+        : [value] "=r" (-> usize),
+    );
+}
+
+inline fn pageTablesSize() usize {
+    return asm volatile ("ldr %[value], =__page_tables_size"
+        : [value] "=r" (-> usize),
+    );
+}
+
+inline fn kernelStackGuardPhys() usize {
+    return asm volatile ("ldr %[value], =__kernel_stack_guard_phys"
+        : [value] "=r" (-> usize),
+    );
+}
 
 // --- Page-table geometry (4 KiB granule, 4-level walk) ---------------------
 // Pool layout, which must match linker.ld's
@@ -48,8 +59,8 @@ const MMIO_TOP: usize = 0x3FFFFFFF; //  top of MMIO
 fn build_identity_map() linksection(".text.boot") void {
     @setRuntimeSafety(false);
 
-    const pt_base = @intFromPtr(&__page_tables_phys_start);
-    const pt_size = @intFromPtr(&__page_tables_size);
+    const pt_base = pageTablesPhysStart();
+    const pt_size = pageTablesSize();
 
     // `volatile` so the zeroing loop below is emitted as real stores instead of
     // being lowered to a `memset` libcall: memset lives in the kernel's high
@@ -103,7 +114,7 @@ fn build_identity_map() linksection(".text.boot") void {
     // overflow past __kernel_stack_limit faults instead of silently corrupting
     // whatever is below it. pte[i] maps physical page i, so the index is
     // guard_phys >> page_shift. Both TTBR0 and TTBR1 walk this same entry.
-    const guard_phys = @intFromPtr(&__kernel_stack_guard_phys);
+    const guard_phys = kernelStackGuardPhys();
     pte[guard_phys / SECTION_SIZE] = 0;
 }
 
@@ -119,7 +130,7 @@ fn activate_mmu() linksection(".text.boot") void {
     // Install the identity-mapped root in both halves (see build_identity_map):
     //   TTBR0 -> low  VAs (identity, for this boot code)
     //   TTBR1 -> high VAs (kernel higher half)
-    const pt_base = @intFromPtr(&__page_tables_phys_start);
+    const pt_base = pageTablesPhysStart();
     regs.TTBR0_EL1.write(pt_base);
     regs.TTBR1_EL1.write(pt_base);
 
