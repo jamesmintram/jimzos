@@ -1,8 +1,8 @@
 const std = @import("std");
+const mmu = @import("../arch/mmu.zig");
 const DeviceTree = @import("DeviceTree");
 const boot = @import("boot_info.zig");
 
-const kernel_va_base: u64 = 0xffff000000000000;
 const max_fdt_size: u32 = 2 * 1024 * 1024;
 
 pub fn discover(fdt_phys: u64) !boot.Builder {
@@ -31,8 +31,8 @@ fn discoverBlob(blob: boot.FdtBlob) !boot.Builder {
 
 fn openBlob(fdt_phys: u64) !boot.FdtBlob {
     if (fdt_phys & 7 != 0) return error.FdtNotAligned;
-    if (fdt_phys > std.math.maxInt(usize) - kernel_va_base) return error.FdtAddressOverflow;
-    const ptr: [*]align(8) const u8 = @ptrFromInt(@as(usize, @intCast(fdt_phys + kernel_va_base)));
+    const virtual = mmu.physicalToVirtual(fdt_phys) catch return error.FdtAddressOverflow;
+    const ptr: [*]align(8) const u8 = @ptrFromInt(virtual);
     const magic = readBe32(ptr[0..4]);
     if (magic != 0xd00dfeed) return error.BadFdtMagic;
     const size = readBe32(ptr[4..8]);

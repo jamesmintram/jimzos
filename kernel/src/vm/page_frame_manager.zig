@@ -1,9 +1,9 @@
 const std = @import("std");
+const mmu = @import("../arch/mmu.zig");
 const boot = @import("../boot/boot_info.zig");
 const ranges = @import("phys_range");
 
 pub const page_size: usize = @intCast(ranges.page_size);
-const kernel_va_base: usize = 0xffff000000000000;
 
 const Bank = struct {
     range: ranges.PhysRange,
@@ -46,7 +46,7 @@ pub const PhysicalAllocator = struct {
         self.info = info;
 
         const metadata_size: usize = @intCast(info.allocator_metadata.size());
-        const metadata_va = try physicalToVirtual(info.allocator_metadata.start);
+        const metadata_va = try mmu.physicalToVirtual(info.allocator_metadata.start);
         const metadata_ptr: [*]u8 = @ptrFromInt(metadata_va);
         self.bitmap = metadata_ptr[0..metadata_size];
         @memset(self.bitmap, 0xff);
@@ -174,7 +174,7 @@ pub const PhysicalAllocator = struct {
         const page_count = std.math.divCeil(usize, n, page_size) catch return null;
         const self: *Self = @ptrCast(@alignCast(ctx));
         const physical_address = self.allocatePages(page_count) orelse return null;
-        return @ptrFromInt(physicalToVirtual(physical_address) catch return null);
+        return @ptrFromInt(mmu.physicalToVirtual(physical_address) catch return null);
     }
 
     fn resize(
@@ -217,17 +217,12 @@ pub const PhysicalAllocator = struct {
         _ = ret_addr;
         if (buf.len == 0) return;
         const address = @intFromPtr(buf.ptr);
-        if (address < kernel_va_base) @panic("free of non-kernel address");
+        const physical_address = mmu.virtualToPhysical(address) catch @panic("free of non-kernel address");
         const page_count = std.math.divCeil(usize, buf.len, page_size) catch @panic("invalid allocation size");
         const self: *Self = @ptrCast(@alignCast(ctx));
-        self.releasePages(address - kernel_va_base, page_count) catch @panic("invalid physical page free");
+        self.releasePages(physical_address, page_count) catch @panic("invalid physical page free");
     }
 };
-
-fn physicalToVirtual(physical_address: u64) !usize {
-    if (physical_address > std.math.maxInt(usize) - kernel_va_base) return error.PhysicalAddressOverflow;
-    return @intCast(physical_address + kernel_va_base);
-}
 
 fn isUsableRange(info: *const boot.BootInfo, candidate: ranges.PhysRange) bool {
     for (info.usable.constSlice()) |usable| {

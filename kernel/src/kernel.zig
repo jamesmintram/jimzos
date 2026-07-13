@@ -16,6 +16,7 @@ const Allocator = mem.Allocator;
 // Process ping pong
 // Verifies that the adjusted length will still map to the full length
 const vm = @import("vm.zig");
+const mmu = @import("arch/mmu.zig");
 const kernel_elf = @import("kernel_elf.zig");
 const ext2 = @import("ext2");
 const buffer_stream = @import("buffer_stream.zig");
@@ -71,7 +72,7 @@ fn kmainInit() noreturn {
     // kprint.write("Swotcj\r", .{});
     // thread.switch_to(alt_thread);
 
-    const img_address = build_options.ext2_phys + 0xFFFF000000000000;
+    const img_address = mmu.physicalToVirtual(build_options.ext2_phys) catch unreachable;
     const img_size = build_options.ext2_used_size;
 
     const img_start_ptr: [*]u8 = @ptrFromInt(img_address);

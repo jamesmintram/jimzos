@@ -11,15 +11,17 @@ pub const Process = struct {
     pid: u32,
 
     thread_list: ?*thread.Thread,
-    address_sapce: ?*address_space.AddressSpace,
+    address_space: ?*address_space.AddressSpace,
 };
 
 pub fn createProcess(allocator: *Allocator) !*Process {
-    var newProcess = try allocator.create(Process);
-    newProcess.next = undefined;
-    newProcess.prev = undefined;
-
-    newProcess.pid = 1;
-
-    return newProcess;
+    const process = try allocator.create(Process);
+    process.* = .{
+        .next = null,
+        .prev = null,
+        .pid = 1,
+        .thread_list = null,
+        .address_space = null,
+    };
+    return process;
 }

@@ -1,4 +1,5 @@
 const std = @import("std");
+const mmu = @import("arch/mmu.zig");
 const BufferStream = @import("buffer_stream.zig").BufferStream;
 const build_options = @import("build_options");
 
@@ -8,8 +9,7 @@ pub const KernelElf = struct {
     data: []u8,
 
     fn load() !KernelElf {
-        const va_base = 0xFFFF000000000000;
-        const elf_address = build_options.kernel_elf_phys + va_base;
+        const elf_address = try mmu.physicalToVirtual(build_options.kernel_elf_phys);
         const elf_size = build_options.kernel_elf_reserved_size;
 
         const elf_start_ptr: [*]u8 = @ptrFromInt(elf_address);
