@@ -59,17 +59,29 @@ pub fn build(b: *std.Build) void {
         .cpu_model = .{ .explicit = &std.Target.aarch64.cpu.generic },
         .cpu_features_sub = std.Target.aarch64.featureSet(&.{ .neon, .fp_armv8 }),
     });
+    const vm_page_mod = b.createModule(.{
+        .root_source_file = b.path("src/vm/page.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     const phys_range_mod = b.createModule(.{
         .root_source_file = b.path("src/vm/phys_range.zig"),
         .target = target,
         .optimize = optimize,
     });
+    phys_range_mod.addImport("vm_page", vm_page_mod);
 
+    const host_vm_page_mod = b.createModule(.{
+        .root_source_file = b.path("src/vm/page.zig"),
+        .target = b.graph.host,
+        .optimize = optimize,
+    });
     const thread_layout_mod = b.createModule(.{
         .root_source_file = b.path("src/thread.zig"),
         .target = b.graph.host,
         .optimize = optimize,
     });
+    thread_layout_mod.addImport("vm_page", host_vm_page_mod);
     const asm_offsets_generator_mod = b.createModule(.{
         .root_source_file = b.path("tools/generate_asm_offsets.zig"),
         .target = b.graph.host,
@@ -96,6 +108,7 @@ pub fn build(b: *std.Build) void {
     });
     boot1_phys_mod.addOptions("build_options", build_options);
     boot1_phys_mod.addImport("phys_range", phys_range_mod);
+    boot1_phys_mod.addImport("vm_page", vm_page_mod);
     const lib_boot1_phys = b.addLibrary(.{
         .name = "boot1_phys",
         .linkage = .static,
@@ -117,6 +130,7 @@ pub fn build(b: *std.Build) void {
     exe_mod.addOptions("build_options", build_options);
     exe_mod.addImport("ext2", ext2_mod);
     exe_mod.addImport("phys_range", phys_range_mod);
+    exe_mod.addImport("vm_page", vm_page_mod);
     exe_mod.addIncludePath(asm_offsets_header.dirname());
 
     exe_mod.addAssemblyFile(b.path("src/arch/aarch64/boot0_entry.S"));
@@ -141,13 +155,26 @@ pub fn build(b: *std.Build) void {
         .target = b.graph.host,
         .optimize = optimize,
     });
+    memory_test_phys_range_mod.addImport("vm_page", host_vm_page_mod);
     memory_test_mod.addImport("DeviceTree", devicetree_dep.module("DeviceTree"));
     memory_test_mod.addImport("phys_range", memory_test_phys_range_mod);
+    memory_test_mod.addImport("vm_page", host_vm_page_mod);
     memory_test_mod.addAnonymousImport("memory_test_dtb", .{ .root_source_file = memory_test_dtb });
     const memory_tests = b.addTest(.{ .root_module = memory_test_mod });
     const run_memory_tests = b.addRunArtifact(memory_tests);
-    const test_step = b.step("test", "Run memory-map unit tests");
+
+    const page_table_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/arch/aarch64/mmu/page_table.zig"),
+        .target = b.graph.host,
+        .optimize = optimize,
+    });
+    page_table_test_mod.addImport("vm_page", host_vm_page_mod);
+    const page_table_tests = b.addTest(.{ .root_module = page_table_test_mod });
+    const run_page_table_tests = b.addRunArtifact(page_table_tests);
+
+    const test_step = b.step("test", "Run kernel unit tests");
     test_step.dependOn(&run_memory_tests.step);
+    test_step.dependOn(&run_page_table_tests.step);
 
     const exe = b.addExecutable(.{
         .name = "kernel8.elf",

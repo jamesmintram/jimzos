@@ -1,6 +1,8 @@
 const std = @import("std");
+const page = @import("vm_page");
 
-pub const page_size: u64 = 4096;
+pub const page_shift: u6 = page.shift;
+pub const page_size: u64 = page.size;
 
 pub const PhysRange = struct {
     start: u64,

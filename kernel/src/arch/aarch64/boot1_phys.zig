@@ -3,7 +3,7 @@
 // -> enter_virtual_addressing) once running in the higher half.
 
 const regs = @import("types/regs.zig");
-const page_table = @import("types/page_table.zig");
+const page_table = @import("mmu/page_table.zig");
 const asm64 = @import("asm.zig");
 const build_options = @import("build_options");
 const platform_bootstrap = @import("platform/bootstrap.zig");
@@ -67,28 +67,29 @@ inline fn tableAt(physical: usize) [*]volatile page_table.Entry {
 
 inline fn ensureNext(parent_phys: usize, index: usize, arena: *TableArena) usize {
     const parent = tableAt(parent_phys);
-    if ((parent[index] & page_table.descriptor_table_or_page) != 0) {
-        return @intCast(parent[index] & page_table.table_address_mask);
+    if ((parent[index] & page_table.descriptor_type_mask) != 0) {
+        return @intCast(page_table.tableAddress(parent[index]));
     }
     const child = arena.allocate();
-    parent[index] = @as(page_table.Entry, @intCast(child)) | page_table.descriptor_table_or_page;
+    parent[index] = page_table.tableDescriptor(@intCast(child));
     return child;
 }
 
-inline fn mapPage(root_phys: usize, physical: usize, flags: page_table.Entry, arena: *TableArena) void {
-    const l1_phys = ensureNext(root_phys, (physical >> page_table.level_0_shift) & page_table.index_mask, arena);
-    const l2_phys = ensureNext(l1_phys, (physical >> page_table.level_1_shift) & page_table.index_mask, arena);
-    const l3_phys = ensureNext(l2_phys, (physical >> page_table.level_2_shift) & page_table.index_mask, arena);
+inline fn mapPage(root_phys: usize, physical: usize, attributes: page_table.Entry, arena: *TableArena) void {
+    const address: u64 = @intCast(physical);
+    const l1_phys = ensureNext(root_phys, page_table.indexFor(address, page_table.level_0_shift), arena);
+    const l2_phys = ensureNext(l1_phys, page_table.indexFor(address, page_table.level_1_shift), arena);
+    const l3_phys = ensureNext(l2_phys, page_table.indexFor(address, page_table.level_2_shift), arena);
     const l3 = tableAt(l3_phys);
-    l3[(physical >> page_table.level_3_shift) & page_table.index_mask] =
-        @as(page_table.Entry, @intCast(physical)) | flags;
+    l3[page_table.indexFor(address, page_table.level_3_shift)] =
+        page_table.pageDescriptor(address, attributes);
 }
 
-inline fn mapRange(root_phys: usize, start: usize, end: usize, flags: page_table.Entry, arena: *TableArena) void {
+inline fn mapRange(root_phys: usize, start: usize, end: usize, attributes: page_table.Entry, arena: *TableArena) void {
     var physical = start & ~(page_table.page_size - 1);
     const aligned_end = (end + page_table.page_size - 1) & ~(page_table.page_size - 1);
     while (physical < aligned_end) : (physical += page_table.page_size) {
-        if (physical != kernelStackGuardPhys()) mapPage(root_phys, physical, flags, arena);
+        if (physical != kernelStackGuardPhys()) mapPage(root_phys, physical, attributes, arena);
     }
 }
 
@@ -101,13 +102,15 @@ inline fn readFdtSize() usize {
 }
 
 inline fn mapEarlyDevices(root_phys: usize, arena: *TableArena) void {
-    const flags = page_table.descriptor_table_or_page |
-        page_table.access_flag |
-        page_table.outer_shareable |
-        page_table.attr_index_device;
     inline for (platform_bootstrap.device_ranges) |maybe_range| {
         if (maybe_range) |range| {
-            mapRange(root_phys, @intCast(range.start), @intCast(range.end), flags, arena);
+            mapRange(
+                root_phys,
+                @intCast(range.start),
+                @intCast(range.end),
+                page_table.device_attributes,
+                arena,
+            );
         }
     }
 }
@@ -133,13 +136,15 @@ fn build_identity_map() linksection(".text.boot") void {
     const root = arena.allocate();
     if (root != pt_base) hangBoot();
 
-    const normal_flags = page_table.descriptor_table_or_page |
-        page_table.access_flag |
-        page_table.inner_shareable |
-        page_table.attr_index_normal;
-    mapRange(root, kernelPhysStart(), kernelPhysEnd(), normal_flags, &arena);
+    mapRange(root, kernelPhysStart(), kernelPhysEnd(), page_table.normal_attributes, &arena);
     const fdt_size = readFdtSize();
-    mapRange(root, build_options.fdt_phys, build_options.fdt_phys + fdt_size, normal_flags, &arena);
+    mapRange(
+        root,
+        build_options.fdt_phys,
+        build_options.fdt_phys + fdt_size,
+        page_table.normal_attributes,
+        &arena,
+    );
     mapEarlyDevices(root, &arena);
 }
 
