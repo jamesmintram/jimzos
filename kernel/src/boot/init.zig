@@ -2,19 +2,20 @@ const std = @import("std");
 const DeviceTree = @import("DeviceTree");
 const build_options = @import("build_options");
 const kprint = @import("../kprint.zig");
+const mmu = @import("../arch/mmu.zig");
 const pl011 = @import("../drivers/serial/pl011.zig");
 const pl011_fdt = @import("../drivers/serial/pl011_fdt.zig");
 const platform = @import("../arch/aarch64/platform.zig");
 const boot = @import("boot_info.zig");
 const fdt_boot = @import("fdt_boot.zig");
 const vm = @import("../vm.zig");
-const final_page_table = @import("../arch/aarch64/mmu/final_page_table.zig");
-const transition_mapper = @import("../arch/aarch64/mmu/transition_mapper.zig");
+const final_map_builder = @import("../arch/aarch64/mmu/final_map_builder.zig");
+const translation_map = @import("../arch/aarch64/mmu/translation_map.zig");
+const TransitionMapper = @import("../arch/aarch64/mmu/transition_mapper.zig").TransitionMapper;
 
 const BootInfo = boot.BootInfo;
 const Config = pl011.Config;
 const Pl011 = pl011.Pl011;
-const kernel_va_base: usize = 0xffff000000000000;
 
 extern fn kmain(boot_info: *const BootInfo) callconv(.c) noreturn;
 extern fn exit() noreturn;
@@ -174,20 +175,24 @@ pub fn run() noreturn {
     dumpConsole(early_config);
     dumpBootInfo(&boot_info_storage);
 
-    transition_mapper.mapAllocatorMetadata(&boot_info_storage) catch exit();
+    var transition = TransitionMapper.init() catch exit();
+    transition.makeNormalAccessible(boot_info_storage.allocator_metadata) catch exit();
     vm.init(&boot_info_storage) catch exit();
-    const final_tables = final_page_table.install(
+    const final_maps = final_map_builder.build(
         vm.get_page_frame_manager(),
+        &transition,
         &boot_info_storage,
         boot.PhysRange.fromStartSize(
             early_config.registers.physicalBase(),
             early_config.registers.size(),
         ) catch exit(),
     ) catch exit();
+    translation_map.install(final_maps) catch exit();
+    transition.finish();
     early_console.useMappedRegisters(
-        kernel_va_base + early_config.registers.physicalBase(),
+        mmu.physicalToVirtual(early_config.registers.physicalBase()) catch exit(),
     ) catch exit();
-    kprint.write("MMU: final FDT map installed using {} table pages\r", .{final_tables.table_pages});
+    kprint.write("MMU: final FDT map installed using {} table pages\r", .{final_maps.totalTablePages()});
 
     attachConsoleDriver(fdt) catch exit();
     kmain(&boot_info_storage);

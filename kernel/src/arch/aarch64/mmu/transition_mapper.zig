@@ -1,78 +1,108 @@
-const boot = @import("../../../boot/boot_info.zig");
-const phys = @import("phys_range");
+//! Temporary higher-half mappings used while constructing the final map.
+//!
+//! The mapper extends the linker-reserved bootstrap root installed by
+//! `boot1_phys`. Boot orchestration owns it from allocator-metadata setup until
+//! the final TTBR roots are installed; it must not escape that interval.
 
-const kernel_va_base: u64 = 0xffff000000000000;
-const table_size: u64 = 4096;
-const entries_per_table = 512;
-const table_address_mask: u64 = 0x0000fffffffff000;
-const descriptor_table_or_page: u64 = 3;
-const access_flag: u64 = 1 << 10;
-const inner_shareable: u64 = 3 << 8;
-const normal_flags: u64 = access_flag | inner_shareable;
+const phys = @import("phys_range");
+const layout = @import("layout.zig");
+const page_table = @import("page_table.zig");
+
+const page_size: u64 = page_table.page_size;
 
 extern const __page_tables_phys_start: u8;
 extern const __page_tables_phys_end: u8;
-var tail_next: u64 = 0;
 
-pub fn mapAllocatorMetadata(info: *const boot.BootInfo) !void {
-    try mapTemporaryNormal(info.allocator_metadata);
-}
+pub const TransitionMapper = struct {
+    root_physical: u64,
+    arena: TableArena,
+    active: bool,
 
-pub fn mapTemporaryNormal(range: phys.PhysRange) !void {
-    const pool_start: u64 = @intFromPtr(&__page_tables_phys_start);
-    const pool_end: u64 = @intFromPtr(&__page_tables_phys_end);
-    if (tail_next == 0) tail_next = pool_start + (pool_end - pool_start) / 2;
-    var arena = TailArena{
-        .next = tail_next,
-        .end = pool_end,
-    };
+    const Self = @This();
 
-    var cursor = range.start;
-    while (cursor < range.end) : (cursor += phys.page_size) {
-        try mapPage(pool_start, kernel_va_base + cursor, cursor, normal_flags, &arena);
+    pub fn init() !Self {
+        const pool_start: u64 = @intFromPtr(&__page_tables_phys_start);
+        const pool_end: u64 = @intFromPtr(&__page_tables_phys_end);
+        if (pool_start >= pool_end or pool_start % page_size != 0 or pool_end % page_size != 0) {
+            return error.InvalidBootstrapPageTablePool;
+        }
+
+        const midpoint = pool_start + (pool_end - pool_start) / 2;
+        if (midpoint % page_size != 0) return error.InvalidBootstrapPageTablePool;
+
+        return .{
+            .root_physical = pool_start,
+            .arena = .{ .next = midpoint, .end = pool_end },
+            .active = true,
+        };
     }
-    tail_next = arena.next;
-    flushTranslations();
-}
 
-const TailArena = struct {
+    pub fn makeNormalAccessible(self: *Self, range: phys.PhysRange) !void {
+        if (!self.active) return error.TransitionMapperFinished;
+        if (range.start % page_size != 0 or range.end % page_size != 0) {
+            return error.UnalignedTransitionRange;
+        }
+
+        var cursor = range.start;
+        while (cursor < range.end) : (cursor += page_size) {
+            try mapPage(
+                self.root_physical,
+                layout.kernel_direct_map_base + cursor,
+                cursor,
+                page_table.normal_attributes,
+                &self.arena,
+            );
+        }
+        flushTranslations();
+    }
+
+    pub fn finish(self: *Self) void {
+        if (!self.active) @panic("transition mapper finished twice");
+        self.active = false;
+    }
+};
+
+const TableArena = struct {
     next: u64,
     end: u64,
 
-    fn allocate(self: *TailArena) !u64 {
-        if (self.next + table_size > self.end) return error.BootstrapPageTablesExhausted;
+    fn allocate(self: *TableArena) !u64 {
+        if (self.next + page_size > self.end) return error.BootstrapPageTablesExhausted;
         const result = self.next;
-        self.next += table_size;
+        self.next += page_size;
         @memset(tableFromPhysical(result), 0);
         return result;
     }
 };
 
-fn mapPage(root: u64, virtual: u64, physical: u64, flags: u64, arena: *TailArena) !void {
-    const l1 = try ensureNext(root, indexFor(virtual, 39), arena);
-    const l2 = try ensureNext(l1, indexFor(virtual, 30), arena);
-    const l3 = try ensureNext(l2, indexFor(virtual, 21), arena);
-    tableFromPhysical(l3)[indexFor(virtual, 12)] = physical | flags | descriptor_table_or_page;
+fn mapPage(
+    root: u64,
+    virtual: u64,
+    physical: u64,
+    attributes: page_table.Entry,
+    arena: *TableArena,
+) !void {
+    const l1 = try ensureNext(root, page_table.indexFor(virtual, page_table.level_0_shift), arena);
+    const l2 = try ensureNext(l1, page_table.indexFor(virtual, page_table.level_1_shift), arena);
+    const l3 = try ensureNext(l2, page_table.indexFor(virtual, page_table.level_2_shift), arena);
+    tableFromPhysical(l3)[page_table.indexFor(virtual, page_table.level_3_shift)] =
+        page_table.pageDescriptor(physical, attributes);
 }
 
-fn ensureNext(parent_phys: u64, index: usize, arena: *TailArena) !u64 {
+fn ensureNext(parent_phys: u64, index: usize, arena: *TableArena) !u64 {
     const parent = tableFromPhysical(parent_phys);
     const entry = parent[index];
     if (entry != 0) {
-        if (entry & descriptor_table_or_page != descriptor_table_or_page) return error.ExpectedBootstrapTable;
-        return entry & table_address_mask;
+        if (!page_table.isTableDescriptor(entry)) return error.ExpectedBootstrapTable;
+        return page_table.tableAddress(entry);
     }
     const child = try arena.allocate();
-    parent[index] = child | descriptor_table_or_page;
+    parent[index] = page_table.tableDescriptor(child);
     return child;
 }
 
-fn indexFor(virtual: u64, shift: u6) usize {
-    return @intCast((virtual >> shift) & (entries_per_table - 1));
-}
-
-fn tableFromPhysical(physical_address: u64) *[entries_per_table]u64 {
-    return @ptrFromInt(@as(usize, @intCast(kernel_va_base + physical_address)));
+fn tableFromPhysical(physical_address: u64) *[page_table.entries_per_table]page_table.Entry {
+    return @ptrFromInt(layout.physicalToVirtual(physical_address) catch unreachable);
 }
 
 fn flushTranslations() void {
