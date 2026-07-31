@@ -1,7 +1,7 @@
 //! Pure AArch64 stage-1 translation-table geometry and descriptor encoding.
 //!
 //! This module deliberately contains no table-memory access. MMU-off boot code,
-//! the transition mapper, and final-map construction access tables through
+//! the bootstrap direct map, and final-map construction access tables through
 //! different address spaces but share these definitions.
 
 const vm_page = @import("vm_page");

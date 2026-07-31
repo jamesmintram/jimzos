@@ -131,7 +131,7 @@ fn build_identity_map() linksection(".text.boot") void {
 
     const pt_base = pageTablesPhysStart();
     const pt_size = pageTablesSize();
-    // The upper half remains untouched for the higher-half transition mapper.
+    // The upper half remains untouched for higher-half bootstrap extensions.
     var arena = TableArena{ .next = pt_base, .end = pt_base + pt_size / 2 };
     const root = arena.allocate();
     if (root != pt_base) hangBoot();

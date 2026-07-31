@@ -1,8 +1,8 @@
-//! Temporary higher-half mappings used while constructing the final map.
+//! Access to normal physical memory through the active bootstrap direct map.
 //!
-//! The mapper extends the linker-reserved bootstrap root installed by
-//! `boot1_phys`. Boot orchestration owns it from allocator-metadata setup until
-//! the final TTBR roots are installed; it must not escape that interval.
+//! This extends the linker-reserved root installed by `boot1_phys`. Boot
+//! orchestration keeps it in lexical scope until the final TTBR roots replace
+//! that bootstrap root.
 
 const phys = @import("phys_range");
 const layout = @import("layout.zig");
@@ -13,10 +13,9 @@ const page_size: u64 = page_table.page_size;
 extern const __page_tables_phys_start: u8;
 extern const __page_tables_phys_end: u8;
 
-pub const TransitionMapper = struct {
+pub const BootstrapDirectMap = struct {
     root_physical: u64,
     arena: TableArena,
-    active: bool,
 
     const Self = @This();
 
@@ -33,32 +32,25 @@ pub const TransitionMapper = struct {
         return .{
             .root_physical = pool_start,
             .arena = .{ .next = midpoint, .end = pool_end },
-            .active = true,
         };
     }
 
     pub fn makeNormalAccessible(self: *Self, range: phys.PhysRange) !void {
-        if (!self.active) return error.TransitionMapperFinished;
         if (range.start % page_size != 0 or range.end % page_size != 0) {
-            return error.UnalignedTransitionRange;
+            return error.UnalignedBootstrapRange;
         }
 
         var cursor = range.start;
         while (cursor < range.end) : (cursor += page_size) {
             try mapPage(
                 self.root_physical,
-                layout.kernel_direct_map_base + cursor,
+                @intCast(try layout.physicalToVirtual(cursor)),
                 cursor,
                 page_table.normal_attributes,
                 &self.arena,
             );
         }
         flushTranslations();
-    }
-
-    pub fn finish(self: *Self) void {
-        if (!self.active) @panic("transition mapper finished twice");
-        self.active = false;
     }
 };
 

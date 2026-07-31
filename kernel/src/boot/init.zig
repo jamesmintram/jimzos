@@ -11,7 +11,8 @@ const fdt_boot = @import("fdt_boot.zig");
 const vm = @import("../vm.zig");
 const final_map_builder = @import("../arch/aarch64/mmu/final_map_builder.zig");
 const translation_map = @import("../arch/aarch64/mmu/translation_map.zig");
-const TransitionMapper = @import("../arch/aarch64/mmu/transition_mapper.zig").TransitionMapper;
+const BootstrapDirectMap = @import("../arch/aarch64/mmu/bootstrap_direct_map.zig").BootstrapDirectMap;
+const TableMemory = @import("../arch/aarch64/mmu/table_memory.zig").TableMemory;
 
 const BootInfo = boot.BootInfo;
 const Pl011 = pl011.Pl011;
@@ -63,6 +64,23 @@ fn buildBootInfoFromFdtBlob(fdt: boot.FdtBlob) !BootInfo {
     return builder.finish(vm.allocatorMetadataRequirement);
 }
 
+/// Initialize the physical allocator through the bootstrap map, then build the
+/// translation roots that will replace it.
+fn buildFinalMaps(
+    info: *const BootInfo,
+    required_device_ranges: []const boot.PhysRange,
+) !translation_map.InstalledMaps {
+    var bootstrap_direct_map = try BootstrapDirectMap.init();
+    try bootstrap_direct_map.makeNormalAccessible(info.allocator_metadata);
+    try vm.init(info);
+
+    var table_memory = TableMemory.init(
+        vm.get_page_frame_manager(),
+        &bootstrap_direct_map,
+    );
+    return final_map_builder.build(&table_memory, info, required_device_ranges);
+}
+
 pub fn run() noreturn {
     const fdt_phys = build_options.fdt_phys;
     const fdt_blob = fdt_boot.discover(fdt_phys) catch exit();
@@ -89,20 +107,14 @@ pub fn run() noreturn {
     diagnostics.dumpConsole(early_config);
     diagnostics.dumpBootInfo(&boot_info_storage);
 
-    var transition = TransitionMapper.init() catch exit();
-    transition.makeNormalAccessible(boot_info_storage.allocator_metadata) catch exit();
-    vm.init(&boot_info_storage) catch exit();
-    const final_maps = final_map_builder.build(
-        vm.get_page_frame_manager(),
-        &transition,
-        &boot_info_storage,
+    const required_device_ranges = [_]boot.PhysRange{
         boot.PhysRange.fromStartSize(
             early_config.registers.physicalBase(),
             early_config.registers.size(),
         ) catch exit(),
-    ) catch exit();
+    };
+    const final_maps = buildFinalMaps(&boot_info_storage, &required_device_ranges) catch exit();
     translation_map.install(final_maps) catch exit();
-    transition.finish();
     early_console.useMappedRegisters(
         mmu.physicalToVirtual(early_config.registers.physicalBase()) catch exit(),
     ) catch exit();
