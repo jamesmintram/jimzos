@@ -32,14 +32,14 @@ fn attachConsoleDriver(fdt: DeviceTree) !void {
     kprint.write("console: adopted early PL011 at 0x{x}\r", .{config.registers.physicalBase()});
 }
 
-fn finishBootInfo(mut_builder: boot.Builder) !BootInfo {
-    var builder = mut_builder;
+fn buildBootInfoFromFdtBlob(fdt: boot.FdtBlob) !BootInfo {
+    var builder = try fdt_boot.parse(fdt);
     try builder.addReservation(.{
         .start = @intFromPtr(&__kernel_phys_start),
         .end = @intFromPtr(&__kernel_phys_end),
     }, .kernel, false, false);
     try builder.addReservation(
-        try boot.PhysRange.fromStartSize(builder.fdt.physical_address, builder.fdt.size),
+        try boot.PhysRange.fromStartSize(fdt.physical_address, fdt.size),
         .fdt,
         false,
         false,
@@ -60,29 +60,28 @@ fn finishBootInfo(mut_builder: boot.Builder) !BootInfo {
         .used_size = build_options.ext2_used_size,
         .kind = .filesystem,
     });
-    try builder.normalize();
-    try vm.reserveMetadata(&builder);
-    return builder.finalize();
+    return builder.finish(vm.allocatorMetadataRequirement);
 }
 
 pub fn run() noreturn {
     const fdt_phys = build_options.fdt_phys;
-    const builder = fdt_boot.discover(fdt_phys) catch exit();
-    const fdt = builder.fdt.tree;
-    boot_info_storage = finishBootInfo(builder) catch exit();
-    const early_config = pl011_fdt.discover(fdt) catch exit();
+    const fdt_blob = fdt_boot.discover(fdt_phys) catch exit();
+    boot_info_storage = buildBootInfoFromFdtBlob(fdt_blob) catch exit();
+
+    const device_tree = fdt_blob.tree;
+    const early_config = pl011_fdt.discover(device_tree) catch exit();
     platform.prepareEarlyPl011(early_config.clock_hz) catch exit();
     early_console = Pl011.create(early_config);
     early_console.configure() catch exit();
     early_console.installAsConsole();
 
-    kprint.write("FDT @ 0x{x} ok (v{d}), nodes:\r", .{ fdt_phys, @intFromEnum(fdt.version) });
-    diagnostics.dumpFdtNodes(fdt) catch |err| {
+    kprint.write("FDT @ 0x{x} ok (v{d}), nodes:\r", .{ fdt_phys, @intFromEnum(device_tree.version) });
+    diagnostics.dumpFdtNodes(device_tree) catch |err| {
         kprint.write("  <node walk failed: {s}>\r", .{@errorName(err)});
     };
 
     kprint.write("memory nodes:\r", .{});
-    diagnostics.dumpMemoryNodes(fdt) catch |err| {
+    diagnostics.dumpMemoryNodes(device_tree) catch |err| {
         kprint.write("  <memory walk failed: {s}>\r", .{@errorName(err)});
     };
 
@@ -109,6 +108,6 @@ pub fn run() noreturn {
     ) catch exit();
     kprint.write("MMU: final FDT map installed using {} table pages\r", .{final_maps.totalTablePages()});
 
-    attachConsoleDriver(fdt) catch exit();
+    attachConsoleDriver(device_tree) catch exit();
     kmain(&boot_info_storage);
 }

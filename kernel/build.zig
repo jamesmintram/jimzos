@@ -163,6 +163,17 @@ pub fn build(b: *std.Build) void {
     const memory_tests = b.addTest(.{ .root_module = memory_test_mod });
     const run_memory_tests = b.addRunArtifact(memory_tests);
 
+    const page_frame_manager_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/page_frame_manager_test.zig"),
+        .target = b.graph.host,
+        .optimize = optimize,
+    });
+    page_frame_manager_test_mod.addImport("DeviceTree", devicetree_dep.module("DeviceTree"));
+    page_frame_manager_test_mod.addImport("phys_range", memory_test_phys_range_mod);
+    page_frame_manager_test_mod.addImport("vm_page", host_vm_page_mod);
+    const page_frame_manager_tests = b.addTest(.{ .root_module = page_frame_manager_test_mod });
+    const run_page_frame_manager_tests = b.addRunArtifact(page_frame_manager_tests);
+
     const page_table_test_mod = b.createModule(.{
         .root_source_file = b.path("src/arch/aarch64/mmu/page_table.zig"),
         .target = b.graph.host,
@@ -174,6 +185,7 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run kernel unit tests");
     test_step.dependOn(&run_memory_tests.step);
+    test_step.dependOn(&run_page_frame_manager_tests.step);
     test_step.dependOn(&run_page_table_tests.step);
 
     const exe = b.addExecutable(.{

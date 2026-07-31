@@ -29,9 +29,21 @@ pub const PhysicalAllocator = struct {
 
     const Self = @This();
 
-    pub fn requiredMetadataBytes(memory: *const boot.MemoryList) !u64 {
+    pub const MetadataRequirement = struct {
+        size: u64,
+        alignment: u64,
+    };
+
+    pub fn metadataRequirement(memory: []const ranges.PhysRange) !MetadataRequirement {
+        return .{
+            .size = try requiredMetadataBytes(memory),
+            .alignment = ranges.page_size,
+        };
+    }
+
+    fn requiredMetadataBytes(memory: []const ranges.PhysRange) !u64 {
         var bytes: u64 = 0;
-        for (memory.constSlice()) |bank| {
+        for (memory) |bank| {
             const pages = bank.size() / ranges.page_size;
             const bank_bytes = (pages + 7) / 8;
             if (bank_bytes > std.math.maxInt(u64) - bytes) return error.AllocatorMetadataOverflow;

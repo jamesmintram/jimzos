@@ -4,9 +4,12 @@ const page_frame_manager = @import("vm/page_frame_manager.zig");
 var physical_allocator: page_frame_manager.PhysicalAllocator = .{};
 var initialized = false;
 
-pub fn reserveMetadata(builder: *boot.Builder) !void {
-    const bytes = try page_frame_manager.PhysicalAllocator.requiredMetadataBytes(&builder.memory);
-    _ = try builder.carveAllocatorMetadata(bytes);
+pub fn allocatorMetadataRequirement(memory: []const boot.PhysRange) anyerror!boot.ReservationRequirement {
+    const requirement = try page_frame_manager.PhysicalAllocator.metadataRequirement(memory);
+    return .{
+        .size = requirement.size,
+        .alignment = requirement.alignment,
+    };
 }
 
 pub fn init(info: *const boot.BootInfo) !void {

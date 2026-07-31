@@ -5,23 +5,21 @@ const boot = @import("boot_info.zig");
 
 const max_fdt_size: u32 = 2 * 1024 * 1024;
 
-pub fn discover(fdt_phys: u64) !boot.Builder {
-    const blob = try openBlob(fdt_phys);
-    return discoverBlob(blob);
+pub fn discover(fdt_phys: u64) !boot.FdtBlob {
+    return openBlob(fdt_phys);
 }
 
-pub fn discoverFromSlice(fdt_phys: u64, bytes: []align(8) const u8) !boot.Builder {
+pub fn discoverFromSlice(fdt_phys: u64, bytes: []align(8) const u8) !boot.FdtBlob {
     if (bytes.len > max_fdt_size) return error.InvalidFdtSize;
-    const blob = boot.FdtBlob{
+    return .{
         .physical_address = fdt_phys,
         .size = @intCast(bytes.len),
         .tree = try DeviceTree.fromSlice(bytes),
     };
-    return discoverBlob(blob);
 }
 
-fn discoverBlob(blob: boot.FdtBlob) !boot.Builder {
-    var builder = boot.Builder.init(blob, blob.tree.bootCpuid() orelse 0);
+pub fn parse(fdt: boot.FdtBlob) !boot.Builder {
+    var builder = boot.Builder.init(fdt, fdt.tree.bootCpuid() orelse 0);
     try parseMemory(&builder);
     try parseReservationBlock(&builder);
     try parseReservedMemory(&builder);

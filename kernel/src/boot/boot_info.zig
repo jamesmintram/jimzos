@@ -57,6 +57,15 @@ pub const Reservation = struct {
     };
 };
 
+pub const ReservationRequirement = struct {
+    size: u64,
+    alignment: u64 = page_size,
+};
+
+pub const ReservationRequirementFn = fn (
+    memory: []const PhysRange,
+) anyerror!ReservationRequirement;
+
 pub const BootModule = struct {
     range: PhysRange,
     used_size: u64,
@@ -119,17 +128,29 @@ pub const Builder = struct {
     modules: ModuleList = .{},
     cpus: CpuList = .{},
     boot_cpu_id: u64,
-    allocator_metadata: ?PhysRange = null,
 
     pub fn init(fdt: FdtBlob, boot_cpu_id: u64) Builder {
         return .{ .fdt = fdt, .boot_cpu_id = boot_cpu_id };
     }
 
     pub fn addMemory(self: *Builder, range: PhysRange) !void {
-        if (try range.alignedInward(page_size)) |aligned| try self.memory.append(aligned);
+        if (try range.alignedInward(page_size)) |aligned| {
+            try self.memory.append(aligned);
+        }
     }
 
     pub fn addReservation(
+        self: *Builder,
+        range: PhysRange,
+        kind: Reservation.Kind,
+        no_map: bool,
+        reclaimable: bool,
+    ) !void {
+        if (kind == .allocator_metadata) return error.BuilderManagedReservationKind;
+        try self.appendReservation(range, kind, no_map, reclaimable);
+    }
+
+    fn appendReservation(
         self: *Builder,
         range: PhysRange,
         kind: Reservation.Kind,
@@ -149,36 +170,61 @@ pub const Builder = struct {
         try self.addReservation(module.range, .boot_module, false, false);
     }
 
-    pub fn normalize(self: *Builder) !void {
+    fn normalize(self: *Builder) !void {
         sortRanges(self.memory.slice());
         mergeMemory(&self.memory);
         try self.rebuildUsable();
     }
 
-    pub fn carveAllocatorMetadata(self: *Builder, size: u64) !PhysRange {
-        if (self.allocator_metadata != null) return error.AllocatorMetadataAlreadyReserved;
+    fn reserveFirstFit(
+        self: *Builder,
+        size: u64,
+        alignment: u64,
+        kind: Reservation.Kind,
+    ) !PhysRange {
+        if (size == 0) return error.EmptyReservation;
+        if (alignment < page_size or !std.math.isPowerOfTwo(alignment)) {
+            return error.InvalidReservationAlignment;
+        }
+
         const aligned_size = try ranges.alignUp(size, page_size);
         for (self.usable.constSlice()) |available| {
-            if (available.size() < aligned_size) continue;
-            const carved = PhysRange{ .start = available.start, .end = available.start + aligned_size };
-            try self.addReservation(carved, .allocator_metadata, false, false);
-            self.allocator_metadata = carved;
+            const start = try ranges.alignUp(available.start, alignment);
+            if (start >= available.end or aligned_size > available.end - start) continue;
+
+            const reserved = PhysRange{ .start = start, .end = start + aligned_size };
+            try self.appendReservation(reserved, kind, false, false);
             try self.rebuildUsable();
-            return carved;
+            return reserved;
         }
-        return error.NoAllocatorMetadataRange;
+        return error.NoUsableReservationRange;
     }
 
-    pub fn finalize(self: *const Builder) !BootInfo {
+    /// Produce a snapshot after canonicalizing fixed inputs and placing
+    /// builder-managed reservations that depend on the final memory layout.
+    pub fn finish(
+        self: *const Builder,
+        comptime metadata_requirement: ReservationRequirementFn,
+    ) anyerror!BootInfo {
+        var snapshot = self.*;
+        try snapshot.normalize();
+
+        const requirement = try metadata_requirement(snapshot.memory.constSlice());
+        const allocator_metadata = try snapshot.reserveFirstFit(
+            requirement.size,
+            requirement.alignment,
+            .allocator_metadata,
+        );
+
         return .{
-            .fdt = self.fdt,
-            .memory = self.memory,
-            .reserved = self.reserved,
-            .usable = self.usable,
-            .modules = self.modules,
-            .cpus = self.cpus,
-            .boot_cpu_id = self.boot_cpu_id,
-            .allocator_metadata = self.allocator_metadata orelse return error.MissingAllocatorMetadata,
+            .fdt = snapshot.fdt,
+            .memory = snapshot.memory,
+            .reserved = snapshot.reserved,
+            .usable = snapshot.usable,
+            .modules = snapshot.modules,
+            .cpus = snapshot.cpus,
+            .boot_cpu_id = snapshot.boot_cpu_id,
+            .allocator_metadata = allocator_metadata,
         };
     }
 
@@ -249,7 +295,6 @@ test "reservations split and trim usable memory" {
     builder.modules = .{};
     builder.cpus = .{};
     builder.boot_cpu_id = 0;
-    builder.allocator_metadata = null;
     try builder.addMemory(try PhysRange.fromStartSize(0x1000, 0x9000));
     try builder.addReservation(try PhysRange.fromStartSize(0x4001, 0x1ffe), .kernel, false, false);
     try builder.normalize();
@@ -259,7 +304,7 @@ test "reservations split and trim usable memory" {
     }, builder.usable.constSlice());
 }
 
-test "allocator metadata is carved from usable memory" {
+test "finish creates reusable snapshots with late allocator metadata" {
     var builder: Builder = undefined;
     builder.memory = .{};
     builder.reserved = .{};
@@ -267,12 +312,58 @@ test "allocator metadata is carved from usable memory" {
     builder.modules = .{};
     builder.cpus = .{};
     builder.boot_cpu_id = 0;
-    builder.allocator_metadata = null;
-    try builder.addMemory(try PhysRange.fromStartSize(0x1000, 0x10000));
-    try builder.normalize();
-    const metadata = try builder.carveAllocatorMetadata(1);
-    try std.testing.expectEqual(PhysRange{ .start = 0x1000, .end = 0x2000 }, metadata);
+    try builder.addMemory(try PhysRange.fromStartSize(0x1000, 0x4000));
+    try builder.addMemory(try PhysRange.fromStartSize(0x5000, 0xc000));
+    try std.testing.expectError(
+        error.BuilderManagedReservationKind,
+        builder.addReservation(
+            try PhysRange.fromStartSize(0x3000, page_size),
+            .allocator_metadata,
+            false,
+            false,
+        ),
+    );
+    try builder.addReservation(
+        try PhysRange.fromStartSize(0x1000, 0x2000),
+        .kernel,
+        false,
+        false,
+    );
+
+    const metadata_requirement = struct {
+        fn get(memory: []const PhysRange) anyerror!ReservationRequirement {
+            if (memory.len != 1 or
+                !std.meta.eql(memory[0], PhysRange{ .start = 0x1000, .end = 0x11000 }))
+            {
+                return error.MemoryNotNormalized;
+            }
+            return .{ .size = 1 };
+        }
+    }.get;
+    const info = try builder.finish(metadata_requirement);
+    try std.testing.expectEqual(@as(usize, 1), builder.reserved.len);
+    try std.testing.expectEqual(
+        PhysRange{ .start = 0x3000, .end = 0x4000 },
+        info.allocator_metadata,
+    );
     try std.testing.expectEqualSlices(PhysRange, &.{
-        .{ .start = 0x2000, .end = 0x11000 },
-    }, builder.usable.constSlice());
+        .{ .start = 0x4000, .end = 0x11000 },
+    }, info.usable.constSlice());
+
+    try builder.addModule(.{
+        .range = try PhysRange.fromStartSize(0x3000, 0x2000),
+        .used_size = 0x2000,
+        .kind = .filesystem,
+    });
+    const updated_info = try builder.finish(metadata_requirement);
+    try std.testing.expectEqual(@as(usize, 2), builder.reserved.len);
+    try std.testing.expectEqual(@as(usize, 0), info.modules.len);
+    try std.testing.expectEqual(@as(usize, 1), updated_info.modules.len);
+    try std.testing.expectEqual(
+        PhysRange{ .start = 0x5000, .end = 0x6000 },
+        updated_info.allocator_metadata,
+    );
+    try std.testing.expectEqualSlices(PhysRange, &.{
+        .{ .start = 0x6000, .end = 0x11000 },
+    }, updated_info.usable.constSlice());
 }
