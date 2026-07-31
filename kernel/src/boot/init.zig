@@ -1,7 +1,6 @@
 const DeviceTree = @import("DeviceTree");
 const build_options = @import("build_options");
 const kprint = @import("../kprint.zig");
-const mmu = @import("../arch/mmu.zig");
 const pl011 = @import("../drivers/serial/pl011.zig");
 const pl011_fdt = @import("../drivers/serial/pl011_fdt.zig");
 const platform = @import("../arch/aarch64/platform.zig");
@@ -87,9 +86,9 @@ pub fn run() noreturn {
     boot_info_storage = buildBootInfoFromFdtBlob(fdt_blob) catch exit();
 
     const device_tree = fdt_blob.tree;
-    const early_config = pl011_fdt.discover(device_tree) catch exit();
-    platform.prepareEarlyPl011(early_config.clock_hz) catch exit();
-    early_console = Pl011.create(early_config);
+    const early_pl011_config = pl011_fdt.discover(device_tree) catch exit();
+    platform.prepareEarlyPl011(early_pl011_config.clock_hz) catch exit();
+    early_console = Pl011.create(early_pl011_config);
     early_console.configure() catch exit();
     early_console.installAsConsole();
 
@@ -104,20 +103,17 @@ pub fn run() noreturn {
     };
 
     kprint.write("early console:\r", .{});
-    diagnostics.dumpConsole(early_config);
+    diagnostics.dumpConsole(early_pl011_config);
     diagnostics.dumpBootInfo(&boot_info_storage);
 
     const required_device_ranges = [_]boot.PhysRange{
         boot.PhysRange.fromStartSize(
-            early_config.registers.physicalBase(),
-            early_config.registers.size(),
+            early_pl011_config.registers.physicalBase(),
+            early_pl011_config.registers.size(),
         ) catch exit(),
     };
     const final_maps = buildFinalMaps(&boot_info_storage, &required_device_ranges) catch exit();
     translation_map.install(final_maps) catch exit();
-    early_console.useMappedRegisters(
-        mmu.physicalToVirtual(early_config.registers.physicalBase()) catch exit(),
-    ) catch exit();
     kprint.write("MMU: final FDT map installed using {} table pages\r", .{final_maps.totalTablePages()});
 
     attachConsoleDriver(device_tree) catch exit();

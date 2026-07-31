@@ -1,5 +1,6 @@
 const std = @import("std");
 const DeviceTree = @import("DeviceTree");
+const mmu = @import("../../arch/mmu.zig");
 const Config = @import("pl011.zig").Config;
 const MmioRegion = @import("../../io/mmio_region.zig").MmioRegion;
 
@@ -26,9 +27,11 @@ pub fn discover(dt: DeviceTree) !Config {
     const register = register_values.next() orelse return error.MissingRegisters;
 
     const clock_hz = try resolveClock(dt, node.node);
+    const physical_base: u64 = @intCast(register.address);
     return .{
-        .registers = try MmioRegion.identityMapped(
-            @intCast(register.address),
+        .registers = try MmioRegion.init(
+            @intCast(physical_base),
+            try mmu.physicalToVirtual(physical_base),
             @intCast(register.size),
         ),
         .clock_hz = clock_hz,

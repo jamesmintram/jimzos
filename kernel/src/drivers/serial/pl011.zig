@@ -49,10 +49,6 @@ pub const Pl011 = struct {
         return .{ .config = adopted_config };
     }
 
-    pub fn useMappedRegisters(self: *Pl011, virtual_base: usize) !void {
-        self.config.registers = try self.config.registers.withVirtualBase(virtual_base);
-    }
-
     pub fn configure(self: *Pl011) !void {
         if (self.config.baud == 0) return error.InvalidBaud;
         if (self.config.registers.size() < interrupt_clear_register + @sizeOf(u32)) {
