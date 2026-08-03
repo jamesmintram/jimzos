@@ -37,16 +37,13 @@ pub const Pl011 = struct {
         return .{ .config = config };
     }
 
-    /// Take ownership of an already configured early console without touching
-    /// its registers, so output remains uninterrupted during driver attach.
-    pub fn adopt(early: *const Pl011, config: Config) !Pl011 {
-        if (!early.config.registers.samePhysicalRange(config.registers)) {
+    /// Replace the bootstrap mapping with the live bus mapping without
+    /// reconfiguring the active UART or changing the console object's address.
+    pub fn rebind(self: *Pl011, config: Config) !void {
+        if (!self.config.registers.samePhysicalRange(config.registers)) {
             return error.ConsoleMismatch;
         }
-
-        var adopted_config = config;
-        adopted_config.registers = early.config.registers;
-        return .{ .config = adopted_config };
+        self.config = config;
     }
 
     pub fn configure(self: *Pl011) !void {

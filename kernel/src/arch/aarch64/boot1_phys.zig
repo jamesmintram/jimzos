@@ -5,6 +5,7 @@
 const regs = @import("types/regs.zig");
 const page_table = @import("mmu/page_table.zig");
 const asm64 = @import("asm.zig");
+const cpu = @import("cpu.zig");
 const build_options = @import("build_options");
 const platform_bootstrap = @import("platform/bootstrap.zig");
 
@@ -24,12 +25,6 @@ inline fn pageTablesSize() usize {
 
 inline fn kernelStackGuardPhys() usize {
     return asm volatile ("ldr %[value], =__kernel_stack_guard_phys"
-        : [value] "=r" (-> usize),
-    );
-}
-
-inline fn bootStackPhys() usize {
-    return asm volatile ("ldr %[value], =__boot_phys_stack"
         : [value] "=r" (-> usize),
     );
 }
@@ -211,13 +206,26 @@ fn drop_to_el2() linksection(".text.boot") void {
     };
     regs.SCR_EL3.write(scr_el3);
 
+    if (build_options.platform == .virt) {
+        // Keep the GICv3 system-register interface enabled below EL3. This is
+        // one prerequisite for booting through secure firmware; interrupt-group
+        // ownership must still be established before Non-secure EL1 takes over.
+        asm volatile (
+            \\ mrs x0, ICC_SRE_EL3
+            \\ orr x0, x0, #0xf
+            \\ msr ICC_SRE_EL3, x0
+            \\ isb
+            ::: .{ .x0 = true });
+    }
+
     const spsr_el3 = regs.SPSR_EL3{
         .A = 1, //
         .I = 1, //
         .F = 1, //
         .D = 1, //
 
-        .M = regs.SPSR_EL3.Mode.EL2t,
+        // enter_el2_from_el3 copies the live SP into SP_EL2 before ERET.
+        .M = regs.SPSR_EL3.Mode.EL2h,
     };
     regs.SPSR_EL3.write(spsr_el3);
 
@@ -232,13 +240,32 @@ fn drop_to_el1() linksection(".text.boot") void {
     };
     regs.HCR_EL2.write(hcr_el2);
 
-    regs.SP_EL1.write(bootStackPhys());
+    // Permit EL1 to use the physical counter and physical timer directly.
+    // These bits matter when the machine exposes EL2; they are harmlessly
+    // bypassed on the usual QEMU virt boot, which starts at EL1.
+    asm volatile (
+        \\ mrs x0, CNTHCTL_EL2
+        \\ orr x0, x0, #3
+        \\ msr CNTHCTL_EL2, x0
+        \\ msr CNTVOFF_EL2, xzr
+        \\ isb
+        ::: .{ .x0 = true });
+
+    if (build_options.platform == .virt) {
+        asm volatile (
+            \\ mrs x0, ICC_SRE_EL2
+            \\ orr x0, x0, #0xf
+            \\ msr ICC_SRE_EL2, x0
+            \\ isb
+            ::: .{ .x0 = true });
+    }
 
     const spsr_el2 = regs.SPSR_EL2{
         .A = 1, //
         .I = 1, //
         .F = 1, //
-        .M = regs.SPSR_EL2.Mode.EL1t, //
+        // enter_el1_from_el2 copies the live SP into SP_EL1 before ERET.
+        .M = regs.SPSR_EL2.Mode.EL1h,
     };
     regs.SPSR_EL2.write(spsr_el2);
 
@@ -269,8 +296,8 @@ fn drop_to_initial_el1() linksection(".text.boot") void {
 /// normal branch cannot reach VA 0xFFFF…, so load the absolute address from a
 /// literal pool and branch to it indirectly. Runs with the MMU on (TTBR1 maps
 /// the high half); enter_virtual_addressing sets the virtual SP, then init_arm
-/// clears BSS and calls kmain, so it never returns. boot_x0 (x0 at reset) is
-/// forwarded untouched to init_arm.
+/// clears BSS, installs the permanent translation maps, and enters normal
+/// kernel initialization. boot_x0 (x0 at reset) is forwarded untouched.
 fn enter_higher_half(boot_x0: usize) linksection(".text.boot") noreturn {
     @setRuntimeSafety(false);
 
@@ -279,6 +306,7 @@ fn enter_higher_half(boot_x0: usize) linksection(".text.boot") noreturn {
     asm volatile (
         \\ ldr x8, =_vectors
         \\ msr vbar_el1, x8
+        \\ isb
         \\ ldr x8, =enter_virtual_addressing
         \\ br  x8
         :
@@ -300,7 +328,9 @@ export fn boot1_phys(boot_x0: usize) linksection(".text.boot") callconv(.c) void
 
     drop_to_initial_el1();
 
-    // Disable interrupts
+    // Firmware may enter directly at EL1 with IRQs unmasked. Keep them masked
+    // until the root controller and the initial interrupt source are attached.
+    cpu.maskIrq();
 
     build_identity_map();
     activate_mmu();

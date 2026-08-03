@@ -16,15 +16,18 @@ const Allocator = mem.Allocator;
 // Process ping pong
 // Verifies that the adjusted length will still map to the full length
 const vm = @import("vm.zig");
+const cpu = @import("arch/cpu.zig").cpu;
 const mmu = @import("arch/mmu.zig");
 const kernel_elf = @import("kernel_elf.zig");
 const ext2 = @import("ext2");
 const buffer_stream = @import("buffer_stream.zig");
 const build_options = @import("build_options");
 const BootInfo = @import("boot/boot_info.zig").BootInfo;
+const interrupt = @import("interrupt.zig");
+const timer = @import("timer.zig");
 
-// Force the arch entry/exit glue (enter_virtual_addressing, exit) to be
-// compiled so its `export fn`s are emitted into the image.
+// Force the AArch64 virtual bootstrap stage to be compiled so its exported
+// entry and exit functions are emitted into the image.
 comptime {
     _ = @import("arch/aarch64/boot2_virt.zig");
 }
@@ -92,15 +95,23 @@ fn kmainInit() noreturn {
     kprint.write("\ts_first_data_block     {}\r", .{super_block.s_first_data_block});
     kprint.write("\ts_blocks_per_group     {}\r", .{super_block.s_blocks_per_group});
 
-    exit();
-
-    while (true) {
-        // kprint.write("INIT\r", .{});
-        // thread.yield();
-        // const x = kprint.get();
-        // kprint.put(x);
-        // framebuffer.put(x);
+    // Keep foreground output finished before enabling the demo IRQ;
+    // kprint is deliberately simple and not re-entrant yet.
+    if (!timer.isSystemInstalled()) {
+        kprint.write("system timer unavailable\r", .{});
+        exit();
     }
+    timer.startSystem() catch |err| {
+        kprint.write("timer start failed: {s}\r", .{@errorName(err)});
+        exit();
+    };
+    // Every initial handler is now published and every source is configured.
+    // Make those writes visible before clearing the CPU-global IRQ mask once.
+    cpu.dataSynchronizationBarrier();
+    cpu.instructionSynchronizationBarrier();
+    cpu.unmaskIrq();
+
+    while (true) cpu.waitForInterrupt();
 }
 
 fn kmainAlt() noreturn {
@@ -119,6 +130,12 @@ pub fn panic(msg: []const u8, error_return_trace: ?*builtin.StackTrace, size: ?u
 }
 
 extern fn exit() noreturn;
+
+/// Called by the EL1h assembly vector with a complete integer exception frame.
+export fn irq_dispatch(frame: *thread.CPUFrame) callconv(.c) void {
+    _ = frame;
+    interrupt.dispatchRoot();
+}
 
 export fn exception_panic(esr_el1: u64, elr_el1: u64, spsr_el1: u64, far_el1: u64) noreturn {
     @import("panic.zig").printGuru("Unhandled synchronous exception triggered");

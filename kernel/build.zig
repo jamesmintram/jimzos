@@ -236,7 +236,7 @@ pub fn build(b: *std.Build) void {
         },
         .virt => run_qemu.addArgs(&.{
             "-M",
-            "virt,dtb-randomness=off",
+            "virt,dtb-randomness=off,gic-version=3",
             "-cpu",
             "cortex-a57",
             "-smp",
