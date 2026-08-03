@@ -1,8 +1,9 @@
 const std = @import("std");
+const cpu = @import("../arch/cpu.zig").cpu;
 
-/// A claimed physical MMIO range and the virtual address through which the
-/// kernel currently accesses it. A bus owns translation and mapping; drivers
-/// retain this value and perform bounded volatile register accesses through it.
+/// A bounded MMIO range and the virtual address through which the kernel
+/// currently accesses it. A bus owns translation and mapping; drivers retain
+/// this value and perform bounded volatile register accesses through it.
 pub const MmioRegion = struct {
     physical_base: usize,
     virtual_base: usize,
@@ -33,6 +34,20 @@ pub const MmioRegion = struct {
         return init(self.physical_base, virtual_base, self.byte_len);
     }
 
+    /// Return a bounded view into this mapping without creating a second
+    /// mapping or allowing the caller to reconstruct one from raw addresses.
+    pub fn subregion(self: MmioRegion, offset: usize, byte_len: usize) !MmioRegion {
+        if (byte_len == 0) return error.EmptyMmioRegion;
+        if (offset > self.byte_len or byte_len > self.byte_len - offset) {
+            return error.MmioSubregionOutOfBounds;
+        }
+        return init(
+            self.physical_base + offset,
+            self.virtual_base + offset,
+            byte_len,
+        );
+    }
+
     pub fn physicalBase(self: MmioRegion) usize {
         return self.physical_base;
     }
@@ -51,14 +66,20 @@ pub const MmioRegion = struct {
 
     pub fn read32(self: MmioRegion, offset: usize) u32 {
         const address = self.accessAddress(offset, @sizeOf(u32), @alignOf(u32));
-        barrier();
+        cpu.dataMemoryBarrier();
         return @as(*volatile u32, @ptrFromInt(address)).*;
     }
 
     pub fn write32(self: MmioRegion, offset: usize, value: u32) void {
         const address = self.accessAddress(offset, @sizeOf(u32), @alignOf(u32));
-        barrier();
+        cpu.dataMemoryBarrier();
         @as(*volatile u32, @ptrFromInt(address)).* = value;
+    }
+
+    pub fn read64(self: MmioRegion, offset: usize) u64 {
+        const address = self.accessAddress(offset, @sizeOf(u64), @alignOf(u64));
+        cpu.dataMemoryBarrier();
+        return @as(*volatile u64, @ptrFromInt(address)).*;
     }
 
     fn accessAddress(self: MmioRegion, offset: usize, width: usize, alignment: usize) usize {
@@ -68,10 +89,6 @@ pub const MmioRegion = struct {
         return self.virtual_base + offset;
     }
 };
-
-inline fn barrier() void {
-    asm volatile ("dmb sy" ::: .{ .memory = true });
-}
 
 test "MMIO region preserves physical identity when rebased" {
     const identity = try MmioRegion.identityMapped(0x1000, 0x200);
@@ -89,4 +106,15 @@ test "MMIO region rejects empty and overflowing ranges" {
         error.MmioRegionOverflow,
         MmioRegion.init(std.math.maxInt(usize), 0x1000, 2),
     );
+}
+
+test "MMIO subregions remain bounded by their parent" {
+    const parent = try MmioRegion.init(0x1000, 0xffff000000001000, 0x400);
+    const child = try parent.subregion(0x100, 0x200);
+
+    try std.testing.expectEqual(@as(usize, 0x1100), child.physicalBase());
+    try std.testing.expectEqual(@as(usize, 0xffff000000001100), child.virtualBase());
+    try std.testing.expectEqual(@as(usize, 0x200), child.size());
+    try std.testing.expectError(error.EmptyMmioRegion, parent.subregion(0, 0));
+    try std.testing.expectError(error.MmioSubregionOutOfBounds, parent.subregion(0x300, 0x200));
 }

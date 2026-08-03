@@ -1,13 +1,10 @@
+const cpu = @import("../../../cpu.zig");
+
 pub const Register = union(enum) {
     ReadOnly: u32,
     WriteOnly: u32,
     ReadWrite: u32,
 };
-
-/// Full-system data memory barrier that orders MMIO accesses on real hardware.
-inline fn barrier() void {
-    asm volatile ("dmb sy" ::: .{ .memory = true });
-}
 
 /// Base address for the MMIO operations.
 pub const MMIO_BASE: u32 = 0x3F000000;
@@ -18,7 +15,7 @@ pub const MMIO_BASE: u32 = 0x3F000000;
 /// Write data to a given MMIO register, returning null
 /// if the register had an incorrect type.
 pub fn write(reg: Register, data: u32) ?void {
-    barrier();
+    cpu.dataMemoryBarrier();
     switch (reg) {
         Register.ReadOnly => return null,
         Register.WriteOnly => {
@@ -33,7 +30,7 @@ pub fn write(reg: Register, data: u32) ?void {
 /// Read data to a given MMIO register, returning null.
 /// if the register had an incorrect type.
 pub fn read(reg: Register) ?u32 {
-    barrier();
+    cpu.dataMemoryBarrier();
     switch (reg) {
         Register.WriteOnly => return null,
         Register.ReadOnly => {

@@ -1,4 +1,5 @@
 const process = @import("proc.zig");
+const cpu = @import("arch/cpu.zig").cpu;
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -83,13 +84,7 @@ fn threadEntry(entry_address: usize) callconv(.c) noreturn {
 }
 
 pub fn current_thread() *Thread {
-    var thread_id: usize = 0;
-
-    //FIXME - I think this works only by accident
-    thread_id = asm volatile ("mrs %[thread_id], tpidr_el1"
-        : [thread_id] "=&r" (-> usize),
-    );
-    return @ptrFromInt(thread_id);
+    return @ptrFromInt(cpu.currentThreadPointer());
 }
 
 pub fn yield() void {
