@@ -1,6 +1,7 @@
 const std = @import("std");
-const ranges = @import("phys_range");
-const PhysicalAllocator = @import("vm/page_frame_manager.zig").PhysicalAllocator;
+const kernel = @import("kernel_test");
+const ranges = kernel.phys_range;
+const PhysicalAllocator = kernel.page_frame_manager.PhysicalAllocator;
 
 test "allocator metadata sizing rounds each memory bank independently" {
     const memory = [_]ranges.PhysRange{

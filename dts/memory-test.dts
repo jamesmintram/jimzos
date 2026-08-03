@@ -5,6 +5,47 @@
 / {
 	#address-cells = <2>;
 	#size-cells = <2>;
+	compatible = "jimzos,memory-test", "simple-bus";
+	model = "JimZOS FDT helper fixture";
+	interrupt-parent = <&gic>;
+	test-u32 = <0x12345678>;
+	test-u64 = /bits/ 64 <0x123456789abcdef0>;
+	test-invalid-scalar = [01 02 03];
+	test-invalid-string = [62 61 64];
+
+	test-status-ok {
+		status = "ok";
+	};
+
+	test-status-okay {
+		status = "okay";
+	};
+
+	gic: interrupt-controller@8000000 {
+		compatible = "arm,gic-v3";
+		#interrupt-cells = <3>;
+		interrupt-controller;
+		reg = <0x0 0x08000000 0x0 0x10000
+		       0x0 0x080a0000 0x0 0xf60000>;
+	};
+
+	timer {
+		compatible = "arm,armv8-timer";
+		interrupts = <1 13 4>, <1 14 4>, <1 11 4>, <1 10 4>;
+	};
+
+	test-interrupts-extended {
+		interrupts-extended = <&gic 0 5 1>;
+	};
+
+	size-only-bus {
+		#address-cells = <0>;
+		#size-cells = <1>;
+
+		size-only-resource@0 {
+			reg = <0x2000>;
+		};
+	};
 
 	memory@40000000 {
 		device_type = "memory";
@@ -42,7 +83,7 @@
 		cpu@1 {
 			device_type = "cpu";
 			reg = <0x0 0x1>;
-			enable-method = "psci";
+			enable-method = "vendor,unknown", "psci";
 		};
 	};
 };

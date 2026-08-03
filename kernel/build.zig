@@ -146,31 +146,35 @@ pub fn build(b: *std.Build) void {
     const memory_test_dtb = run_test_dtc.addOutputFileArg("memory-test.dtb");
     run_test_dtc.addFileArg(b.path("../dts/memory-test.dts"));
     const memory_test_mod = b.createModule(.{
-        .root_source_file = b.path("src/memory_test.zig"),
+        .root_source_file = b.path("src/tests/memory_test.zig"),
         .target = b.graph.host,
         .optimize = optimize,
     });
-    const memory_test_phys_range_mod = b.createModule(.{
+    const host_phys_range_mod = b.createModule(.{
         .root_source_file = b.path("src/vm/phys_range.zig"),
         .target = b.graph.host,
         .optimize = optimize,
     });
-    memory_test_phys_range_mod.addImport("vm_page", host_vm_page_mod);
-    memory_test_mod.addImport("DeviceTree", devicetree_dep.module("DeviceTree"));
-    memory_test_mod.addImport("phys_range", memory_test_phys_range_mod);
-    memory_test_mod.addImport("vm_page", host_vm_page_mod);
+    host_phys_range_mod.addImport("vm_page", host_vm_page_mod);
+    const kernel_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/test.zig"),
+        .target = b.graph.host,
+        .optimize = optimize,
+    });
+    kernel_test_mod.addImport("DeviceTree", devicetree_dep.module("DeviceTree"));
+    kernel_test_mod.addImport("phys_range", host_phys_range_mod);
+    kernel_test_mod.addImport("vm_page", host_vm_page_mod);
+    memory_test_mod.addImport("kernel_test", kernel_test_mod);
     memory_test_mod.addAnonymousImport("memory_test_dtb", .{ .root_source_file = memory_test_dtb });
     const memory_tests = b.addTest(.{ .root_module = memory_test_mod });
     const run_memory_tests = b.addRunArtifact(memory_tests);
 
     const page_frame_manager_test_mod = b.createModule(.{
-        .root_source_file = b.path("src/page_frame_manager_test.zig"),
+        .root_source_file = b.path("src/tests/page_frame_manager_test.zig"),
         .target = b.graph.host,
         .optimize = optimize,
     });
-    page_frame_manager_test_mod.addImport("DeviceTree", devicetree_dep.module("DeviceTree"));
-    page_frame_manager_test_mod.addImport("phys_range", memory_test_phys_range_mod);
-    page_frame_manager_test_mod.addImport("vm_page", host_vm_page_mod);
+    page_frame_manager_test_mod.addImport("kernel_test", kernel_test_mod);
     const page_frame_manager_tests = b.addTest(.{ .root_module = page_frame_manager_test_mod });
     const run_page_frame_manager_tests = b.addRunArtifact(page_frame_manager_tests);
 
@@ -183,10 +187,31 @@ pub fn build(b: *std.Build) void {
     const page_table_tests = b.addTest(.{ .root_module = page_table_test_mod });
     const run_page_table_tests = b.addRunArtifact(page_table_tests);
 
+    const table_editor_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/arch/aarch64/mmu/table_editor.zig"),
+        .target = b.graph.host,
+        .optimize = optimize,
+    });
+    table_editor_test_mod.addImport("phys_range", host_phys_range_mod);
+    table_editor_test_mod.addImport("vm_page", host_vm_page_mod);
+    const table_editor_tests = b.addTest(.{ .root_module = table_editor_test_mod });
+    const run_table_editor_tests = b.addRunArtifact(table_editor_tests);
+
+    const translation_map_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/tests/translation_map_test.zig"),
+        .target = b.graph.host,
+        .optimize = optimize,
+    });
+    translation_map_test_mod.addImport("kernel_test", kernel_test_mod);
+    const translation_map_tests = b.addTest(.{ .root_module = translation_map_test_mod });
+    const run_translation_map_tests = b.addRunArtifact(translation_map_tests);
+
     const test_step = b.step("test", "Run kernel unit tests");
     test_step.dependOn(&run_memory_tests.step);
     test_step.dependOn(&run_page_frame_manager_tests.step);
     test_step.dependOn(&run_page_table_tests.step);
+    test_step.dependOn(&run_table_editor_tests.step);
+    test_step.dependOn(&run_translation_map_tests.step);
 
     const exe = b.addExecutable(.{
         .name = "kernel8.elf",
