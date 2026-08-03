@@ -1,8 +1,8 @@
-//! Pure AArch64 stage-1 translation-table geometry and descriptor encoding.
+//! Pure AArch64 stage-1 translation-table geometry and descriptor operations.
 //!
-//! This module deliberately contains no table-memory access. MMU-off boot code,
-//! the bootstrap direct map, and final-map construction access tables through
-//! different address spaces but share these definitions.
+//! This module has no knowledge of how table memory is addressed. MMU-off boot
+//! code, the bootstrap direct map, and final-map construction access tables
+//! through different address spaces but share these definitions.
 
 const vm_page = @import("vm_page");
 
@@ -26,6 +26,7 @@ pub const block_1g_size: u64 = 1024 * 1024 * 1024;
 pub const block_2m_size: u64 = 2 * 1024 * 1024;
 
 pub const table_address_mask: Entry = 0x0000_ffff_ffff_f000;
+pub const physical_address_limit: u64 = table_address_mask + page_size;
 
 pub const descriptor_valid: Entry = 0b01;
 pub const descriptor_table_or_page: Entry = 0b11;
@@ -34,6 +35,7 @@ pub const descriptor_type_mask: Entry = 0b11;
 pub const access_flag: Entry = 1 << 10;
 pub const outer_shareable: Entry = 2 << 8;
 pub const inner_shareable: Entry = 3 << 8;
+pub const read_only: Entry = 1 << 7;
 pub const attr_index_normal: Entry = 0 << 2;
 pub const attr_index_device: Entry = 1 << 2;
 pub const privileged_execute_never: Entry = 1 << 53;
@@ -41,6 +43,38 @@ pub const unprivileged_execute_never: Entry = 1 << 54;
 
 pub const normal_attributes: Entry = access_flag | inner_shareable | attr_index_normal;
 pub const device_attributes: Entry = access_flag | outer_shareable | attr_index_device;
+pub const kernel_device_attributes: Entry = device_attributes |
+    privileged_execute_never |
+    unprivileged_execute_never;
+
+pub const MemoryType = enum {
+    normal,
+    device,
+};
+
+pub const MapOptions = struct {
+    /// Kernel mappings remain readable, EL1-only, and global. These fields
+    /// select the memory type and the permissions that currently vary.
+    memory_type: MemoryType,
+    writable: bool,
+    executable: bool,
+};
+
+pub fn kernelMappingAttributes(options: MapOptions) !Entry {
+    if (options.memory_type == .device and options.executable) {
+        return error.ExecutableDeviceMapping;
+    }
+
+    var attributes = switch (options.memory_type) {
+        .normal => normal_attributes,
+        .device => device_attributes,
+    };
+    if (!options.writable) attributes |= read_only;
+    if (!options.executable) {
+        attributes |= privileged_execute_never | unprivileged_execute_never;
+    }
+    return attributes;
+}
 
 pub inline fn indexFor(address: u64, shift: u6) usize {
     return @intCast((address >> shift) & index_mask);
@@ -64,6 +98,14 @@ pub inline fn blockDescriptor(physical_address: u64, attributes: Entry) Entry {
 
 pub inline fn pageDescriptor(physical_address: u64, attributes: Entry) Entry {
     return physical_address | attributes | descriptor_table_or_page;
+}
+
+/// Install an absent descriptor, accepting an identical existing mapping.
+/// A different address, descriptor type, or attribute remains a conflict.
+pub fn ensureDescriptor(slot: *Entry, desired: Entry) !void {
+    if (slot.* == desired) return;
+    if (slot.* != 0) return error.MappingConflict;
+    slot.* = desired;
 }
 
 comptime {
@@ -93,6 +135,68 @@ test "descriptor helpers preserve the table address" {
     try std.testing.expectEqual(
         physical | normal_attributes | descriptor_table_or_page,
         pageDescriptor(physical, normal_attributes),
+    );
+}
+
+test "descriptor installation is idempotent but rejects conflicts" {
+    const std = @import("std");
+    const desired = pageDescriptor(0x1234_5000, kernel_device_attributes);
+    var slot: Entry = 0;
+
+    try ensureDescriptor(&slot, desired);
+    try std.testing.expectEqual(desired, slot);
+
+    try ensureDescriptor(&slot, desired);
+    try std.testing.expectEqual(desired, slot);
+
+    try std.testing.expectError(
+        error.MappingConflict,
+        ensureDescriptor(&slot, pageDescriptor(0x1234_6000, kernel_device_attributes)),
+    );
+    try std.testing.expectError(
+        error.MappingConflict,
+        ensureDescriptor(&slot, pageDescriptor(0x1234_5000, normal_attributes)),
+    );
+    try std.testing.expectEqual(desired, slot);
+
+    var page_slot = pageDescriptor(0x4000_0000, kernel_device_attributes);
+    try std.testing.expectError(
+        error.MappingConflict,
+        ensureDescriptor(
+            &page_slot,
+            blockDescriptor(0x4000_0000, kernel_device_attributes),
+        ),
+    );
+}
+
+test "kernel mapping options encode memory type and permissions" {
+    const std = @import("std");
+
+    try std.testing.expectEqual(
+        kernel_device_attributes,
+        try kernelMappingAttributes(.{
+            .memory_type = .device,
+            .writable = true,
+            .executable = false,
+        }),
+    );
+    try std.testing.expectEqual(
+        normal_attributes | read_only |
+            privileged_execute_never |
+            unprivileged_execute_never,
+        try kernelMappingAttributes(.{
+            .memory_type = .normal,
+            .writable = false,
+            .executable = false,
+        }),
+    );
+    try std.testing.expectError(
+        error.ExecutableDeviceMapping,
+        kernelMappingAttributes(.{
+            .memory_type = .device,
+            .writable = false,
+            .executable = true,
+        }),
     );
 }
 
