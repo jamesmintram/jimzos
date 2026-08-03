@@ -45,13 +45,19 @@ pub fn build(b: *std.Build) void {
 
     const run_qemu = b.addSystemCommand(&.{"qemu-system-aarch64"});
     run_qemu.addArgs(&.{
-        "-machine", "virt",
-        "-cpu",     "cortex-a57",
-        "-m",       "256",
+        "-machine",
+        "virt",
+        "-cpu",
+        "cortex-a57",
+        "-m",
+        "256",
         "-nographic",
-        "-drive",   b.fmt("if=pflash,format=raw,readonly=on,file={s}", .{ovmf_code}),
-        "-drive",   "if=pflash,format=raw,file=zig-out/efi-vars.fd",
-        "-drive",   "file=fat:rw:zig-out/esp,format=raw,media=disk",
+        "-drive",
+        b.fmt("if=pflash,format=raw,readonly=on,file={s}", .{ovmf_code}),
+        "-drive",
+        "if=pflash,format=raw,file=zig-out/efi-vars.fd",
+        "-drive",
+        "file=fat:rw:zig-out/esp,format=raw,media=disk",
     });
     run_qemu.step.dependOn(&stage_esp.step);
     run_qemu.step.dependOn(&stage_vars.step);
