@@ -1,70 +1,46 @@
 # jimzos
 
-## build and run
+JimZOS is a work-in-progress AArch64 kernel written in Zig. The default target
+is QEMU's generic Arm `virt` machine.
 
-The default target is QEMU's generic Arm `virt` platform:
+## Build and run
 
-    cd kernel
-    zig build qemu
+The kernel currently builds with Zig 0.16.0 and also requires
+`qemu-system-aarch64`, `dtc`, `llvm-objcopy`, and `llvm-objdump`.
+
+```sh
+cd kernel
+zig build test
+zig build qemu
+```
+
+Exit QEMU with <kbd>Ctrl-A</kbd>, then <kbd>X</kbd>.
 
 The Raspberry Pi 3 target is available explicitly:
 
-    zig build qemu -Dplatform=raspi3
+```sh
+zig build qemu -Dplatform=raspi3
+```
 
-To start either target paused with a GDB server:
+That target currently boots through memory initialization and the ext2 probe,
+then exits because its minimal device tree does not yet describe a supported
+interrupt controller or system timer.
 
-    zig build qemu -Dgdb=true
-    gdb/gdb.sh
+## Debugging
 
+Start QEMU paused with a GDB server:
 
-Ext2 FS:
-- GOAL: `tree` all test disk images
--- Add support for outputting to something formattable? "{}", .{inode}
--- Nested folders,
--- Improve the iterator
--- Reading file data - API? (How do I read X amount of data)
+```sh
+zig build qemu -Dgdb=true
+```
 
-Cleanup
-- Prekernel: Load kernel elf, enable MMU, jump to kernel main
-- Move StackFrame and hardware dependent context switching into aarch
-ELF loading
+Then connect an AArch64-capable GDB to `localhost:1234` using
+`zig-out/bin/kernel8.elf` for symbols. Prefer symbolic breakpoints such as
+`break __start` rather than fixed addresses.
 
-- Can we use a linker symbol as a proxy for kernel elf size?
+## Status
 
-
-Need a panic fn
-
-https://dwarfstd.org/doc/Debugging%20using%20DWARF-2012.pdf
-
-https://eli.thegreenplace.net/2011/02/07/how-debuggers-work-part-3-debugging-information
-
-Move StackFrame and hardware dependent context switching into aarch
-Single threaded spinlock
-- Build an auto-release mechanism?
-- Detect context switch when spinlock held (panic)
-- Recursive spinlock? (Counter?)
-- Save, Disable + Restore interrupts
-
-Proper init of the Kernel Allocator
-How is the Kernel Allocator used? Globally accessible? USE A BIG KERNEL LOCK!
-
-Page Frame Allocator
-- Needs its own memory
-- Gives pages to things
-- Doesn't know anything about kernel allocator (things above it)
-
-Single threaded spinlock
-- Build an auto-release mechanism?
-- Detect context switch when spinlock held (panic)
-- Recursive spinlock? (Counter?)
-- Save, Disable + Restore interrupts
-
-Bootstrap Kernel Allocator
-- Relies on the Page Frame Allocator for its memory
-- Build initial kernel page tables
--- As an address space that we can map ranges of memory into and build
----- Kernel vs Arch tables
--- How do we bootstrap the memory for this? [Special process for VM bootstrap?]
-
-
-Build some better register access code? More readable? Safer?
+The `virt` target reaches the higher-half kernel, installs FDT-derived memory
+maps, initializes the physical allocator, attaches PL011 and GICv3 devices,
+mounts the bundled ext2 test image, and receives generic timer interrupts.
+Threads, processes, userspace, and most ext2 operations remain experimental.
