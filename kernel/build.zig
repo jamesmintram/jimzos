@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 pub fn build(b: *std.Build) void {
     const Platform = enum { raspi3, virt };
@@ -224,18 +225,32 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(exe);
 
-    // Dump a flat binary + symbol files from the linked ELF.
-    const run_objcopy = b.addSystemCommand(&[_][]const u8{"llvm-objcopy"});
-    run_objcopy.addArtifactArg(exe);
-    run_objcopy.addArgs(&[_][]const u8{ "-O", "binary", "zig-out/bin/kernel8" });
+    const check_kernel_size = CheckKernelSize.create(b, exe.getEmittedBin(), platform_config.kernel_elf_reserved_size);
 
-    const run_create_syms = b.addSystemCommand(&[_][]const u8{"./post.sh"});
-    run_create_syms.addArtifactArg(exe);
+    // Generate and install the flat binary, disassembly and symbol table.
+    const run_objcopy = addLlvmCommand(b, "llvm-objcopy");
+    run_objcopy.step.dependOn(check_kernel_size);
+    run_objcopy.addFileArg(exe.getEmittedBin());
+    run_objcopy.addArgs(&.{ "-O", "binary" });
+    const kernel_binary = run_objcopy.addOutputFileArg("kernel8");
+    const install_binary = b.addInstallBinFile(kernel_binary, "kernel8");
 
-    const dump_step = b.step("dump", "Dump symbols");
-    dump_step.dependOn(&exe.step);
-    dump_step.dependOn(&run_objcopy.step);
-    dump_step.dependOn(&run_create_syms.step);
+    const run_disassembly = addLlvmCommand(b, "llvm-objdump");
+    run_disassembly.step.dependOn(check_kernel_size);
+    run_disassembly.addFileArg(exe.getEmittedBin());
+    run_disassembly.addArg("-d");
+    const install_disassembly = b.addInstallFile(run_disassembly.captureStdOut(.{}), "dumps/kernel.S");
+
+    const run_symbols = addLlvmCommand(b, "llvm-objdump");
+    run_symbols.step.dependOn(check_kernel_size);
+    run_symbols.addFileArg(exe.getEmittedBin());
+    run_symbols.addArg("--syms");
+    const install_symbols = b.addInstallFile(run_symbols.captureStdOut(.{}), "dumps/kernel.syms");
+
+    const dump_step = b.step("dump", "Generate the flat binary, disassembly and symbols");
+    dump_step.dependOn(&install_binary.step);
+    dump_step.dependOn(&install_disassembly.step);
+    dump_step.dependOn(&install_symbols.step);
 
     const install_dtb = if (platform_config.dts) |dts| blk: {
         const run_dtc = b.addSystemCommand(&[_][]const u8{ "dtc", "-I", "dts", "-O", "dtb", "-o" });
@@ -248,8 +263,7 @@ pub fn build(b: *std.Build) void {
     if (install_dtb) |install| dtb_step.dependOn(&install.step);
 
     // The default `zig build` produces the ELF, the flat binary and the dumps.
-    b.getInstallStep().dependOn(&run_objcopy.step);
-    b.getInstallStep().dependOn(&run_create_syms.step);
+    b.getInstallStep().dependOn(dump_step);
 
     // Run the kernel under QEMU.
     const run_qemu = b.addSystemCommand(&[_][]const u8{"qemu-system-aarch64"});
@@ -294,3 +308,68 @@ pub fn build(b: *std.Build) void {
     const qemu_step = b.step("qemu", "run kernel in qemu");
     qemu_step.dependOn(&run_qemu.step);
 }
+
+fn addLlvmCommand(b: *std.Build, name: []const u8) *std.Build.Step.Run {
+    // Homebrew's LLVM is keg-only, so its tools may not be on PATH. Check
+    // both standard prefixes after PATH, using the host OS, not the target.
+    const search_paths: []const []const u8 = if (builtin.os.tag == .macos)
+        &.{ "/opt/homebrew/opt/llvm/bin", "/usr/local/opt/llvm/bin" }
+    else
+        &.{};
+    const tool = b.findProgram(&.{name}, search_paths) catch {
+        const message = if (builtin.os.tag == .macos)
+            b.fmt(
+                "Required LLVM tool '{s}' was not found.\n" ++
+                    "Searched PATH, /opt/homebrew/opt/llvm/bin and /usr/local/opt/llvm/bin.\n" ++
+                    "Install LLVM with `brew install llvm`, or add your LLVM bin directory to PATH.",
+                .{name},
+            )
+        else
+            b.fmt(
+                "Required LLVM tool '{s}' was not found on PATH.\n" ++
+                    "Install LLVM using your system package manager and add its bin directory to PATH.",
+                .{name},
+            );
+        const run = b.addSystemCommand(&.{name});
+        // Fail only steps that need this tool; `zig build test` and --help
+        // must still work without LLVM installed.
+        run.step.dependOn(&b.addFail(message).step);
+        return run;
+    };
+    return b.addSystemCommand(&.{tool});
+}
+
+const CheckKernelSize = struct {
+    step: std.Build.Step,
+    elf: std.Build.LazyPath,
+    max_size: u64,
+
+    fn create(b: *std.Build, elf: std.Build.LazyPath, max_size: u64) *std.Build.Step {
+        const check = b.allocator.create(CheckKernelSize) catch @panic("OOM");
+        check.* = .{
+            .step = std.Build.Step.init(.{
+                .id = .custom,
+                .name = "check kernel ELF fits boot-module reservation",
+                .owner = b,
+                .makeFn = make,
+            }),
+            .elf = elf,
+            .max_size = max_size,
+        };
+        elf.addStepDependencies(&check.step);
+        return &check.step;
+    }
+
+    fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) !void {
+        const check: *CheckKernelSize = @fieldParentPtr("step", step);
+        const b = step.owner;
+        try step.singleUnchangingWatchInput(check.elf);
+        const path = check.elf.getPath2(b, step);
+        const stat = std.Io.Dir.cwd().statFile(b.graph.io, path, .{}) catch |err| {
+            return step.fail("Unable to check kernel ELF size at '{s}': {s}", .{ path, @errorName(err) });
+        };
+        if (stat.size > check.max_size) {
+            return step.fail("Kernel ELF is {d} bytes, exceeding its {d}-byte boot-module reservation.", .{ stat.size, check.max_size });
+        }
+    }
+};

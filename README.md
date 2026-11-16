@@ -3,6 +3,19 @@
 JimZOS is a work-in-progress AArch64 kernel written in Zig. The default target
 is QEMU's generic Arm `virt` machine.
 
+## MacOS setup
+
+```sh
+brew install qemu
+brew install llvm
+brew install dtc
+```
+
+The build searches `PATH` for LLVM tools first. On macOS it also checks
+`/opt/homebrew/opt/llvm/bin` (Apple Silicon) and `/usr/local/opt/llvm/bin` (Intel),
+so Homebrew LLVM does not need to be added to `PATH`. For other LLVM
+installations, add their `bin` directory to `PATH`.
+
 ## Build and run
 
 The kernel currently builds with Zig 0.16.0 and also requires
@@ -13,6 +26,10 @@ cd kernel
 zig build test
 zig build qemu
 ```
+
+`zig build` and `zig build dump` generate the flat binary at
+`zig-out/bin/kernel8`, plus disassembly and symbols at `zig-out/dumps/kernel.S`
+and `zig-out/dumps/kernel.syms`.
 
 Exit QEMU with <kbd>Ctrl-A</kbd>, then <kbd>X</kbd>.
 
